@@ -147,7 +147,6 @@
     <string name="about_version_fmt">Version %1$s · %2$s</string>
     <string name="about_copied">Copied</string>
     <string name="about_long_press_copy">Long-press the address to copy</string>
-    <string name="about_thanks">Thanks to the OpenMinis project and the DeepSeek model for their help with this project.</string>
     <string name="edition_official">Official</string>
     <string name="edition_platform">Platform Edition</string>
     <string name="loading">Loading…</string>

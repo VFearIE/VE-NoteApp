@@ -3,7 +3,8 @@ package de.robv.android.xposed;
 /**
  * Xposed API stub —— 仅供编译期使用（运行时由框架提供）。
  *
- * ★ 必须与 ToastHook 用的一致：findAndHookMethod 返回 Unhook（不是 void）。
+ * ★ 关键：findAndHookMethod 的返回类型必须是 Unhook（不是 void），
+ *   否则编译通过但运行时抛 NoSuchMethodError（方法描述符不匹配）。
  */
 public class XposedHelpers {
 

@@ -77,14 +77,15 @@
 |---|---|
 | 最低版本 | Android 7.0（API 24） |
 | 目标版本 | Android 14（API 34） |
-| 编译版本 | API 35 |
+| 编译版本 | API 34 |
 
 > **兼容性说明（如实声明）**
 >
 > 项目的目标范围是 **Android 7 ~ 14**。
 > **提醒功能的真实设备验证仅覆盖 Android 9（API 28）手表**。
 > 其余版本为代码层面的兼容性适配，**未在真机上逐一验证**。
-> Android 15 / API 35 仅做过基础兼容性检查。
+> 构建目标为 API 34（compileSdk / targetSdk 均为 34）；
+> Android 15（API 35）**不在构建目标内**，仅做过程序兼容性评估。
 
 ---
 
@@ -160,7 +161,7 @@
 ## 从源码构建
 
 ```bash
-# 环境：JDK 17 + Android SDK（API 34/35 平台 + build-tools 34.0.0）
+# 环境：JDK 17 + Android SDK（platform 34 + build-tools 34.0.0）
 
 cp local.properties.example local.properties
 # 编辑 local.properties，写入你的 SDK 路径

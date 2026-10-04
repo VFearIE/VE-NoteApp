@@ -147,7 +147,6 @@
     <string name="about_version_fmt">版本号：%1$s %2$s</string>
     <string name="about_copied">已复制</string>
     <string name="about_long_press_copy">长按地址可复制</string>
-    <string name="about_thanks">感谢 OpenMinis 项目与 DeepSeek 模型对于本项目的帮助</string>
     <string name="edition_official">正式版</string>
     <string name="edition_platform">平台定制版</string>
     <string name="loading">加载中…</string>

@@ -1,7 +1,7 @@
 #!/bin/sh
 # ============================================================
 # 构建 Xposed 保活模块（LSPosed / Vector）
-# 流程照搬已验证的 ToastHook 方案，含 4 个关键坑的处理：
+# 构建流程要点（含 4 个已验证的坑）：
 #   ① meta-data 必须在 <application> 内（否则管理器识别不出）
 #   ② API 桩编译成 jar，d8 用 --lib 引用（不进 dex）
 #   ③ 作用域默认含 system（Hook 点在 system_server）

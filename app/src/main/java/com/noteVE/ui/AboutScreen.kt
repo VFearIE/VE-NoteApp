@@ -155,17 +155,6 @@ fun AboutScreen(onBack: () -> Unit) {
             )
 
             Spacer(Modifier.height(32.dp))
-
-            // 致谢（小灰字）
-            Text(
-                stringResource(R.string.about_thanks),
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.outline,
-                textAlign = TextAlign.Center,
-                lineHeight = 16.sp
-            )
-
-            Spacer(Modifier.height(32.dp))
         }
     }
 }

@@ -1,6 +1,6 @@
 id=venote
 name=VE笔记
-version=2.1.0
-versionCode=210
+version=2.1.2
+versionCode=212
 author=VFearIE
 description=以静态 overlay 方式把 VE笔记 安装为系统应用（system/priv-app），并部署其权限白名单。安装后重启即可生效。
