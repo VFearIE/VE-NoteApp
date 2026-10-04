@@ -352,7 +352,10 @@ class NoteRepository(private val context: Context) {
             }
             // ★ 纵深防御：即便上游已校验过包内条目名，这里仍确认最终写入路径
             //   确实位于预期目录之内 —— 阻断任何形式的路径穿越（../、符号链接等）。
-            if (!isInside(dest, attachments.attachmentDir) &&
+            // ★ 注意：本方法的参数名为 `attachments`（包内的附件字节表），
+            //   它会遮蔽类字段 `attachments`（AttachmentManager）——
+            //   故这里必须用 `this.attachments` 才能取到附件目录。
+            if (!isInside(dest, this.attachments.attachmentDir) &&
                 !isInside(dest, File(context.filesDir, "recordings"))
             ) {
                 Log.w(TAG, "拒绝写出目录之外的附件: ${dest.path}")

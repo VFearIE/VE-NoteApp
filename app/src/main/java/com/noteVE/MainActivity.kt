@@ -9,6 +9,7 @@ import com.noteVE.domain.Permissions
 import com.noteVE.domain.Settings
 import com.noteVE.reminder.ReminderService
 import com.noteVE.reminder.ReminderVibrator
+import com.noteVE.ui.NoteApp
 
 class MainActivity : ComponentActivity() {
 
