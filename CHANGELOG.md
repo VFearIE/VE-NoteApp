@@ -63,26 +63,42 @@
 - README 如实披露「代码由 AI 编码代理完成」的开发方式。
 - 提供正式 Magisk 模块（纯静态 overlay，仅部署应用与权限白名单，**不含任何保活逻辑**）。
 
-### 保活模块改名
+### 保活模块（`XposedKeepAlive`）
 
-原称 `NoteVE-LSPosed-*.apk`，包名 `com.noteve.keepalive`。
+模块是**通用保活工具**，不绑定任何具体应用。
 
-**改名原因**：该模块是**通用保活模块**（可保护任意应用），带 `NoteVE` 会让人误以为
-只对 VE笔记 生效。现改为：
+| 项 | 值 |
+|---|---|
+| 发行文件名 | `XposedKeepAlive-*.apk` |
+| 包名 | `com.vfearie.keepalive` |
+| 应用标签 | Xposed 保活 |
+| **保护对象** | **由框架作用域决定** —— 勾选哪些应用就保护哪些 |
 
-| | 原 | 现 |
-|---|---|---|
-| 发行文件名 | `NoteVE-LSPosed-*.apk` | `XposedKeepAlive-*.apk` |
-| 包名 | `com.noteve.keepalive` | `com.vfearie.keepalive` |
-| 应用标签 | `Xposed 保活` | `Xposed 保活`（不变） |
+**设计要点**
 
-**同时修正了模块说明中一处不实描述**：原文档称「作用域即保护名单」，
-但实际实现是「内置名单 + 可选外部名单文件」，
-作用域**只需勾选「系统框架」**，被保护的应用无需加入作用域。
-文档已按真实实现更正。
+- **作用域即保护对象**：无需改代码、无需维护名单文件。
+  依据：模块只会被注入到「作用域内」的进程，故「在作用域内」≡「受保护」。
+- **只拦截 `forceStopPackage`**：闹钟存放于 AMS 内部，
+  只有 force-stop 会连带清空它；`killBackgroundProcesses`、LMK 回收等
+  只杀进程、不影响闹钟，无需拦截。
+- **名单只存内存**：把应用移出作用域后，其保护会随进程重启自动失效，
+  不会留下幽灵条目，也不需要人工清理。
+- **发送方身份校验**：自报接收器需跨应用投递，故校验「声称的包名确实属于发送方 uid」。
+  取 uid 的 API 跨版本不一（`getSentFromUid()` 需 API 34+，老版本靠隐藏 API），
+  两者都不可用时**放行并记录警告** —— 伪造只能让某应用免疫划卡，无法获取权限或数据，
+  而一律拒绝会在 ROM 屏蔽隐藏 API 时让模块整体失效。
 
-> ⚠️ **升级提示**：包名变更后，已安装旧版模块的用户会看到**两个模块**。
-> 请卸载旧模块（`com.noteve.keepalive`），重新安装新模块并重新配置作用域。
+**工程结构**（职责分离）
+
+```
+src/com/vfearie/keepalive/
+├── KeepAliveHook.java      入口：按目标进程分发
+├── SystemServerSide.java   system_server 侧：装拦截器 + 收自报 + 身份校验
+├── AppSide.java            应用侧：向 system_server 定向自报
+├── ProtectList.java        保护名单（内存注册表）
+├── Constants.java          跨进程约定
+└── Log.java                统一日志
+```
 
 ### 已知限制
 

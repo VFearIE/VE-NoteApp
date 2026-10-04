@@ -99,17 +99,15 @@
 | 组成 | 说明 |
 |---|---|
 | `NoteVE-root-*.apk` | 应用本体，已用项目密钥签名 |
-| `XposedKeepAlive-*.apk` | Xposed / Vector 保活模块（**通用**，可保护任意应用） |
+| `XposedKeepAlive-*.apk` | Xposed / Vector 保活模块（**通用**） |
 | `com.noteVE.xml` | priv-app 权限白名单 |
 
 **为什么需要保活模块**：在部分设备上，「从最近任务划掉应用」实际触发的是
 `force-stop`，会清空该应用的 `AlarmManager` 闹钟并置包状态为 `stopped`，
 导致提醒永久失效。该模块在系统框架层拦截针对该应用的 `force-stop`，从而保住提醒。
 
-模块为**通用设计**（不绑定任何具体应用）：
-
-- **作用域只需勾选「系统框架」**一项 —— Hook 点在 `system_server` 内
-- **保护对象**由模块内的保护名单决定（默认保护本应用，可自行增删，详见模块说明）
+模块为**通用设计**：**作用域即保护对象** —— 在框架管理器里勾选哪些应用，就保护哪些应用。
+不需要改代码，也不需要维护任何名单文件。详见 [模块说明](distribution/lsposed/README.md)。
 
 ### B. Platform 版（ROM 集成）
 
@@ -134,8 +132,10 @@
 1. 安装 NoteVE-root-*.apk（普通安装即可）
 2. 安装 Xposed / Vector 模块 NoteVE-LSPosed-*.apk
 3. 在框架管理器（LSPosed / Vector）中启用该模块
-4. ★ 作用域只需勾选一项：「系统框架」（显示为 system）
-5. 重启设备（Hook 点在 system_server，作用域变更只对新进程生效）
+4. ★ 作用域勾选两部分：
+      · 「系统框架」（显示为 system）  ← 必须，拦截器运行在 system_server 内
+      · 要保护的应用                  ← 勾选谁就保护谁
+5. 重启设备（作用域变更只对新进程生效）
 ```
 
 ### Platform 版
