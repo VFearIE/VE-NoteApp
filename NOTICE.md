@@ -1,6 +1,6 @@
-# VE笔记 开源组件声明（NOTICE）
+# NoteApp 开源组件声明（NOTICE）
 
-本项目（VE笔记 / VE NoteApp）为独立自研的 Android 原生笔记应用。
+本项目（NoteApp）为独立自研 Android 原生笔记应用，作为 system/priv-app 随商用 ROM 预装分发。
 本文件列出本项目所依赖的开源组件及其版权与许可证信息，以满足 Apache-2.0 等许可证的 NOTICE 义务。
 
 ## 依赖组件清单
@@ -17,6 +17,7 @@
 | kotlinx.coroutines | 1.8.1 | Apache-2.0 | https://github.com/Kotlin/kotlinx.coroutines |
 | SQLite | (系统内置) | Public Domain | https://sqlite.org |
 | org.json | (AOSP) | Apache-2.0 | https://source.android.com |
+| material-color-utilities | 0.1.2 | Apache-2.0 | https://github.com/material-foundation/material-color-utilities |
 
 ## 版权归属
 

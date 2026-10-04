@@ -15,8 +15,8 @@ android {
         applicationId = "com.noteVE"
         minSdk = 24
         targetSdk = 34
-        versionCode = 212
-        versionName = "2.1.2"
+        versionCode = 213
+        versionName = "2.1.3"
     }
 
     /**
@@ -92,6 +92,9 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
+
+    // M3 动态取色（Android 12 以下本地生成；仅依赖 androidx.annotation）
+    implementation(libs.material.color.utilities)
 
     // 单元测试（纯 JVM，无需设备）
     testImplementation(libs.junit)

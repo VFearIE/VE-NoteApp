@@ -10,6 +10,10 @@ navigationCompose = "2.8.2"
 room = "2.6.1"
 coroutines = "1.8.1"
 
+# M3 动态取色（Google 官方 material-color-utilities 的 Java 移植，Apache-2.0）
+# 用途：Android 12 以下本地生成 M3 配色（系统 API 仅 API 31+ 可用）
+materialColorUtilities = "0.1.2"
+
 # 单元测试
 junit = "4.13.2"
 # Android 的 org.json 在 JVM 单元测试中是空实现（调用即抛异常），
@@ -32,6 +36,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+material-color-utilities = { group = "me.tatarka.google.material", name = "material-color-utilities", version.ref = "materialColorUtilities" }
 
 # ── 测试 ──
 junit = { group = "junit", name = "junit", version.ref = "junit" }

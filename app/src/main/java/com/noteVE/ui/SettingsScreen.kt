@@ -1,6 +1,5 @@
 package com.noteVE.ui
 
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
@@ -127,13 +126,13 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
                         onSelect = { Settings.setTheme(it) }
                     )
 
+                    // ★ 动态取色在本项目**所有受支持版本**都可用：
+                    //   Android 12+ 走系统原生方案；更低版本由应用内本地生成
+                    //   （见 ui/theme/DynamicColorsCompat）。故不再按 SDK 版本禁用开关。
                     SwitchRow(
                         title = stringResource(R.string.dynamic_color),
-                        subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                            stringResource(R.string.dynamic_color_desc)
-                        else stringResource(R.string.dynamic_color_unsupported),
+                        subtitle = stringResource(R.string.dynamic_color_desc),
                         checked = dynamicColor,
-                        enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
                         onCheckedChange = { Settings.setDynamicColor(it) }
                     )
 

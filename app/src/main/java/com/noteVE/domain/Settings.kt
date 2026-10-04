@@ -24,13 +24,18 @@ object Settings {
     private val _sortBy = MutableStateFlow(SORT_NAME)
     private val _sortReverse = MutableStateFlow(false)
     private val _warnPermissionMissing = MutableStateFlow(true)
-    private val _dynamicColor = MutableStateFlow(false)
+    private val _dynamicColor = MutableStateFlow(true)
     val theme: StateFlow<String> = _theme
     val language: StateFlow<String> = _language
     val sortBy: StateFlow<String> = _sortBy
     val sortReverse: StateFlow<Boolean> = _sortReverse
     val warnPermissionMissing: StateFlow<Boolean> = _warnPermissionMissing
-    /** Material3 动态取色（跟随系统壁纸调色板），仅 Android 12+ 生效。 */
+    /**
+     * M3 动态取色（跟随壁纸调色板）。**默认开启**。
+     *
+     * - Android 12+：使用系统原生方案
+     * - Android 12 以下：应用内本地生成（见 ui/theme/DynamicColorsCompat）
+     */
     val dynamicColor: StateFlow<Boolean> = _dynamicColor
 
     fun init(context: Context) {
@@ -40,7 +45,7 @@ object Settings {
         _sortBy.value = prefs.getString("sortBy", SORT_NAME) ?: SORT_NAME
         _sortReverse.value = prefs.getBoolean("sortReverse", false)
         _warnPermissionMissing.value = prefs.getBoolean("warnPermissionMissing", true)
-        _dynamicColor.value = prefs.getBoolean("dynamicColor", false)
+        _dynamicColor.value = prefs.getBoolean("dynamicColor", true)
     }
 
     fun setTheme(v: String) { _theme.value = v; prefs.edit().putString("theme", v).apply() }

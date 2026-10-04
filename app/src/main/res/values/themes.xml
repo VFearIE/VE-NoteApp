@@ -1,10 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Activity 的 XML 主题（亮色）。
+
+  ★ 为什么需要它：Compose 的 MaterialTheme 只作用于 Compose 组件；
+    AndroidView 承载的原生 View（编辑器 EditText）读的是 **Activity 的 XML 主题**。
+
+  ★ 状态栏：使用与页面表面一致的**实色**（而非透明 + edge-to-edge）。
+    原因：全面屏设备上透明状态栏会把内容顶到挖孔/刘海里，
+    需要额外引入 insets 边距处理；而本项目只需「状态栏与应用同色、不割裂」，
+    实色是最简单且足够的做法。
+    色值取自配色规格的 surface：亮 #F9F9FF / 深 #111318
+    （运行时还会由 Compose 侧按实际主题再同步一次，兼容应用内手动切深色）。
+-->
 <resources>
     <style name="Theme.NoteApp" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">#FFF9F9FF</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowBackground">#FFF7F7FB</item>
+        <item name="android:windowBackground">#FFF9F9FF</item>
         <item name="android:textColorPrimary">#FF1A1B20</item>
-        <item name="android:textColorSecondary">#FF45464F</item>
+        <item name="android:textColorSecondary">#FF44474F</item>
     </style>
 </resources>

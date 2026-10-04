@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  深色模式主题（-night 资源限定符）。
-  ★ 为什么需要：Compose 的 MaterialTheme 只作用于 Compose 组件；
-    AndroidView 里承载的原生 View（如编辑器 EditText）读的是 **Activity 的 XML 主题**。
-    若不提供 -night 版本，系统深色下它们仍是浅色主题 → 黑字黑底不可读。
+  Activity 的 XML 主题（深色，-night 资源限定符）。
+
+  ★ 为什么需要：Compose 的 MaterialTheme 管不到 AndroidView 里的原生 View；
+    它们读 Activity 的 XML 主题。若无 -night 变体，系统深色下原生控件仍是浅色主题
+    → 黑字黑底不可读。
+
+  ★ 状态栏：实色，取自配色规格的 surface（深 #121318）。
+    修正此前的问题：状态栏为白色而应用为深色，观感割裂。
 -->
 <resources>
     <style name="Theme.NoteApp" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">#FF111318</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowBackground">#FF101014</item>
-        <item name="android:textColorPrimary">#FFE6E4EC</item>
-        <item name="android:textColorSecondary">#FFC6C5D0</item>
+        <item name="android:windowBackground">#FF111318</item>
+        <item name="android:textColorPrimary">#FFE2E2E9</item>
+        <item name="android:textColorSecondary">#FFC4C6D0</item>
     </style>
 </resources>

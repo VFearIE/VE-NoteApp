@@ -10,7 +10,6 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.UnderlineSpan
-import android.text.style.URLSpan
 
 /** 作用于编辑区选中文本的富文本动作（按行分段应用，避免跨换行的样式跨度）。 */
 object RichTextActions {
@@ -21,24 +20,6 @@ object RichTextActions {
     fun toggleStrike(e: Editable) = toggleCharSpan(e) { StrikethroughSpan() }
     fun toggleBullet(e: Editable) = toggleList(e, ordered = false)
     fun toggleOrdered(e: Editable) = toggleList(e, ordered = true)
-
-    /**
-     * 应用链接。
-     *
-     * @param range 显式选区 `(start, end)`；**传 null 才回退读取当前 selection**。
-     *
-     * ★ 为什么需要显式选区：点击工具栏按钮会弹出对话框，对话框会夺走 EditText 焦点，
-     *   此时 `Selection.getSelectionStart()` 已不再等于用户点击工具栏前选中的范围
-     *   （表现为「插了链接但没作用在选中文字上」）。
-     *   故调用方必须在**点击瞬间**冻结选区，并把冻结值传进来。
-     */
-    fun applyLink(e: Editable, url: String, range: Pair<Int, Int>? = null) {
-        val (s, end) = resolveRange(e, range) ?: return
-        for ((ls, le) in lineSegments(e, s, end)) {
-            e.getSpans(ls, maxOf(ls, le - 1), URLSpan::class.java).forEach { e.removeSpan(it) }
-            e.setSpan(URLSpan(url), ls, le, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-    }
 
     /** 应用文字颜色。同样支持显式选区（颜色对话框也会抢焦点）。 */
     fun applyColor(e: Editable, color: Int, range: Pair<Int, Int>? = null) {

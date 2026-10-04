@@ -38,7 +38,7 @@ import kotlinx.coroutines.delay
 /**
  * 授权相关（三级页面）。
  *
- * 设计参考 OpenMinis 的 SystemPermissionsScreen：
+ * 按 iOS Settings「inset grouped」风格实现：
  *  - 分组（Section：标题 + 脚注）+ 行（Row：图标 + 标题 + 副标题 + 控件）
  *  - **每秒轮询**状态，从系统设置返回后自动刷新，无需手动重进
  *  - 每行左侧 drawable 图标，右侧胶囊开关；开关状态 = 真实授权状态
@@ -162,7 +162,7 @@ fun PermissionScreen(onBack: () -> Unit) {
 }
 
 /**
- * 分组卡片（iOS Settings「inset grouped」风格，参考 OpenMinis SettingsSection）：
+ * 分组卡片（iOS Settings「inset grouped」风格）：
  * 大写分组头 + 14dp 圆角卡片 + 可选脚注。
  */
 @Composable
@@ -177,7 +177,7 @@ private fun PermSection(
 
 /**
  * 权限行：30dp 圆角色块图标（内嵌 18dp 白图标）+ 标题/副标题 + 右侧胶囊开关。
- * 行高固定 min 56dp，分隔线 0.5dp 且缩进到图标之后（参考 OpenMinis SettingsRow）。
+ * 行高固定 min 56dp，分隔线 0.5dp 且缩进到图标之后。
  */
 @Composable
 private fun PermRow(

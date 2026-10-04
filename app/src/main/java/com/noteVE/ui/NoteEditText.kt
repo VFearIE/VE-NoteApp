@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.text.Editable
 import android.text.InputType
+import android.text.Spanned
 import android.text.method.ArrowKeyMovementMethod
 import android.text.TextWatcher
 import android.text.style.URLSpan
@@ -12,14 +13,35 @@ import android.text.util.Linkify
 import android.view.Gravity
 import android.view.MotionEvent
 import android.widget.EditText
+import java.util.regex.Pattern
 
 /**
  * 行内链接富文本 EditText。
  *
- * 修复两点：
- * ① 自动识别：输入/加载时用 Linkify 实时把裸 URL / 邮箱 / 电话识别为链接；
- * ② 点击可打开：命中链接时弹出系统「打开方式」选择器（ACTION_VIEW + createChooser）。
- * 链接以浅蓝色 + 下划线渲染（URLSpan/ClickableSpan 默认下划线）。
+ * ## 能力
+ * ① **自动识别**：输入/加载时把文本中的网址 / 邮箱 / 电话识别为链接；
+ * ② **点击打开**：命中链接时弹出系统「打开方式」选择器（ACTION_VIEW + createChooser）。
+ * 链接以浅蓝 + 下划线渲染（URLSpan 默认下划线）。
+ *
+ * ## ★ 网址识别的尺度（为什么不用 Linkify.WEB_URLS）
+ *
+ * 系统的 `Linkify.WEB_URLS` 为了兼容「裸域名」（如 `example.com`），
+ * 其正则**不要求 scheme**，导致误报 —— 典型如把报错堆栈/代码里的
+ * `com.foo.Bar.kt:12` 当成网址（`.kt` 也符合它的 TLD 形态）。
+ *
+ * 这里收窄为**必须是显式 URL**：
+ *
+ * | 形式 | 是否识别 | 例 |
+ * |---|---|---|
+ * | 带 scheme | ✅ | `https://a.com/x`、`http://192.168.1.1:8080`、`ftp://a.com` |
+ * | `www.` 前缀 | ✅（自动补 `http://`） | `www.a.com` |
+ * | 裸域名 | ❌ | `example.com` |
+ * | 代码 / 堆栈 / 包名 | ❌ | `com.foo.Bar`、`Foo.kt:12`、`java.lang.NPE` |
+ *
+ * 并自动**裁掉尾部的成对/句读标点**（中英文），
+ * 故「详情见 https://a.com。」这类写法也能得到正确范围。
+ *
+ * 邮箱与电话仍交给系统内置正则（它们的精确度足够，且不涉及上述误报）。
  */
 class NoteEditText(context: Context) : EditText(context) {
 
@@ -36,6 +58,32 @@ class NoteEditText(context: Context) : EditText(context) {
         /** 占位符（onSurfaceVariant） */
         private const val HINT_DARK = 0xFFC6C5D0.toInt()
         private const val HINT_LIGHT = 0xFF45464F.toInt()
+
+        /**
+         * URL 匹配「结尾不允许是标点」的字符集（中英文句读 + 成对符号）。
+         *
+         * 用法：正则写成 `\S*[^…标点…]` —— `\S*` 贪婪吃到底，
+         * 再由末尾字符类**回溯**到最后一个非标点字符，
+         * 从而一次性完成「匹配 + 裁尾」，无需额外回调。
+         */
+        private const val PUNCT = ".,;:!?'\"\\[\\](){}<>" +
+            "，。；：！？、（）【】《》「」『』“”‘’·"
+
+        /** 显式带 scheme 的 URL。 */
+        private val SCHEME_URL: Pattern = Pattern.compile(
+            "(?i)\\b(?:https?://|ftp://)\\S*[^\\s$PUNCT]"
+        )
+
+        /** `www.` 前缀形式（要求前面不是单词字符或 `/`，避免与上面的完整 URL 重叠匹配）。 */
+        private val WWW_URL: Pattern = Pattern.compile(
+            "(?i)(?<![\\w/])www\\.\\S*[^\\s$PUNCT]"
+        )
+
+        /** 快速预判：文本里出现这些片段才值得跑正则，避免每次按键都全量扫描。 */
+        private fun mayContainLink(t: CharSequence): Boolean {
+            val s = t.toString()
+            return s.contains("://") || s.contains("www.") || s.contains('@')
+        }
     }
 
     private var linkifying = false
@@ -75,22 +123,53 @@ class NoteEditText(context: Context) : EditText(context) {
                 if (s == null || linkifying) return
                 linkifying = true
                 try {
-                    // 清理失效链接，再整体重新识别
+                    // 清理已失效的链接 span（例如其覆盖的文字被删除）
                     for (span in s.getSpans(0, s.length, URLSpan::class.java)) {
                         val st = s.getSpanStart(span)
                         val en = s.getSpanEnd(span)
                         if (st < 0 || en <= st || en > s.length) s.removeSpan(span)
                     }
-                    Linkify.addLinks(
-                        s,
-                        Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES or Linkify.PHONE_NUMBERS
-                    )
+
+                    // 快速预判：文本里没有链接特征就不做任何扫描
+                    if (!mayContainLink(s)) return
+
+                    // ① 邮箱 / 电话：沿用系统内置正则
+                    //    ★ 必须放在自定义 URL 之前 —— Linkify.addLinks(text, mask)
+                    //      会先清空已有的 URLSpan，若顺序反了会把下面刚加的网址冲掉。
+                    Linkify.addLinks(s, Linkify.EMAIL_ADDRESSES or Linkify.PHONE_NUMBERS)
+
+                    // ② 网址：仅识别显式 URL（见类注释）
+                    applyUrlSpans(s)
                 } catch (_: Throwable) {
+                    // 识别失败绝不能影响输入
                 } finally {
                     linkifying = false
                 }
             }
         })
+    }
+
+    /** 扫描并写入网址 span。 */
+    private fun applyUrlSpans(s: Editable) {
+        var m = SCHEME_URL.matcher(s)
+        while (m.find()) {
+            val start = m.start()
+            s.setSpan(
+                URLSpan(m.group()),
+                start, m.end(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        m = WWW_URL.matcher(s)
+        while (m.find()) {
+            // `www.` 形式补上 scheme —— 否则 ACTION_VIEW 无法打开（Uri 无 scheme）
+            val start = m.start()
+            s.setSpan(
+                URLSpan("http://" + m.group()),
+                start, m.end(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
     }
 
     /**
@@ -127,13 +206,10 @@ class NoteEditText(context: Context) : EditText(context) {
     /**
      * 精确命中测试：只有**点击位置真正落在链接文字上**才返回 URL。
      *
-     * ★ 修复「点击范围过大」：旧实现只按水平偏移取 offset，再用 `off±1` 取 span，
-     *   导致①整行高度内任意位置（含行间空白）都命中 ②行末之后的空白也算到行末 offset。
-     *   现要求三项同时满足：
-     *     ① y 落在该行的 [lineTop, lineBottom) 内（排除行间空隙）
-     *     ② offset 落在 span 的 [start, end) 内（去掉 ±1 扩宽）
-     *     ③ x 落在该 span 的实际水平范围 [spanLeft - tol, spanRight + tol] 内
-     *        （tiny tolerance 仅用于容忍边缘像素，不影响「点空白不跳转」）
+     * 三项同时满足才算命中：
+     *   ① y 落在该行的 `[lineTop, lineBottom)` 内（排除行间空隙）
+     *   ② offset 落在 span 的 `[start, end)` 内（不做 ±1 扩宽）
+     *   ③ x 落在该 span 的实际水平范围 `[left - tol, right + tol]` 内
      */
     private fun urlAt(x: Float, y: Float): String? = try {
         val lay = layout

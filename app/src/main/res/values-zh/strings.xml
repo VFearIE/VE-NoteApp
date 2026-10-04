@@ -77,7 +77,6 @@
     <string name="underline">下划线</string>
     <string name="bullet_list">无序列表</string>
     <string name="number_list">有序列表</string>
-    <string name="insert_link">插入链接</string>
     <string name="text_color">文字颜色</string>
     <string name="save">保存</string>
     <string name="label_prompt">用逗号或空格分隔</string>
@@ -110,7 +109,6 @@
     <string name="settings_behavior">行为</string>
     <string name="dynamic_color">动态取色</string>
     <string name="dynamic_color_desc">强调色跟随系统壁纸</string>
-    <string name="dynamic_color_unsupported">需要 Android 12 及以上</string>
     <string name="restart_theme">重启应用以应用主题设置</string>
     <string name="restart_language">重启应用以应用语言设置</string>
     <string name="perm_section">授权相关</string>

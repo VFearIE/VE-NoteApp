@@ -150,7 +150,6 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
     /** 正文滚动状态（供右侧快速定位条驱动）。 */
     val contentScroll = rememberScrollState()
     var showReminder by remember { mutableStateOf(false) }
-    var showLink by remember { mutableStateOf(false) }
     var showColor by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var insertOpen by remember { mutableStateOf(false) }
@@ -383,7 +382,6 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                     onUnderline = { format { RichTextActions.toggleUnderline(it) } },
                     onStrike = { format { RichTextActions.toggleStrike(it) } },
                     onBullet = { format { RichTextActions.toggleBullet(it) } },
-                    onLink = { freezeSelection(); showLink = true },
                     onColor = { freezeSelection(); showColor = true },
                     onCollapse = { toolbarCollapsed = true }
                 )
@@ -476,13 +474,6 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
     if (showReminder) {
         ReminderDialog(reminderAt, repeatRule, { at, rule -> vm.updateReminder(at, rule); showReminder = false }, { showReminder = false })
     }
-    if (showLink) {
-        LinkDialog({ url ->
-            // 使用点击工具栏瞬间冻结的选区：不依赖对话框期间的 selection
-            applyFrozen { editable, range -> RichTextActions.applyLink(editable, url, range) }
-            showLink = false
-        }, { showLink = false })
-    }
     if (showColor) {
         ColorDialog({ c ->
             applyFrozen { editable, range -> RichTextActions.applyColor(editable, c, range) }
@@ -543,7 +534,7 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
 
 @Composable
 private fun FormattingToolbar(
-    onUnderline: () -> Unit, onStrike: () -> Unit, onBullet: () -> Unit, onLink: () -> Unit, onColor: () -> Unit,
+    onUnderline: () -> Unit, onStrike: () -> Unit, onBullet: () -> Unit, onColor: () -> Unit,
     onCollapse: () -> Unit
 ) {
     Row(
@@ -570,7 +561,6 @@ private fun FormattingToolbar(
             ToolbarIcon(R.drawable.ic_editor_underline, R.string.underline, onUnderline)
             ToolbarIcon(R.drawable.ic_editor_strikethrough, R.string.strikethrough, onStrike)
             ToolbarIcon(R.drawable.ic_editor_bullet_list, R.string.bullet_list, onBullet)
-            ToolbarIcon(R.drawable.ic_editor_link, R.string.insert_link, onLink)
             ToolbarIcon(R.drawable.ic_editor_color, R.string.text_color, onColor)
         }
         // 右侧：固定「折叠」按钮（向上箭头），不随图标滚动
@@ -648,18 +638,6 @@ fun ReminderDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
-@Composable
-private fun LinkDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var url by remember { mutableStateOf("https://") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.insert_link)) },
-        text = { OutlinedTextField(value = url, onValueChange = { url = it }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { onConfirm(url) }) { Text(stringResource(R.string.confirm)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ColorDialog(onPick: (Int) -> Unit, onDismiss: () -> Unit) {

@@ -77,7 +77,6 @@
     <string name="underline">Underline</string>
     <string name="bullet_list">Bullet list</string>
     <string name="number_list">Numbered list</string>
-    <string name="insert_link">Insert link</string>
     <string name="text_color">Text color</string>
     <string name="save">Save</string>
     <string name="label_prompt">Separate with commas or spaces</string>
@@ -110,7 +109,6 @@
     <string name="settings_behavior">Behavior</string>
     <string name="dynamic_color">Dynamic color</string>
     <string name="dynamic_color_desc">Match accent color to system wallpaper</string>
-    <string name="dynamic_color_unsupported">Requires Android 12+</string>
     <string name="restart_theme">Restart the app to apply the theme</string>
     <string name="restart_language">Restart the app to apply the language</string>
     <string name="perm_section">Permissions</string>
