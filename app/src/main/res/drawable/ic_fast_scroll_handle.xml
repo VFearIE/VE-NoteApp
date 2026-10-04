@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快速滚动手柄（浅色页面用）。
+
+  ## 为什么用贝塞尔而不是圆弧
+  Android 的 VectorDrawable 在部分版本上对 `A`（arc）指令的 sweep-flag 解析有偏差，
+  会画成大弧 → 路径自交 → 表现为「沿对角线切成两种颜色」+「圆角处多出一个小角」。
+  故此处改用**三次贝塞尔**近似四分之一圆（系数 k = 0.5523），各版本渲染一致。
+
+  ## 造型
+  - 右侧直边贴屏幕右缘（右边距 0）
+  - 左侧上下圆角 r = 51（= 宽 × 40%）
+  - 两个 90° 直角箭头（miter 出尖 / butt 平尾），线宽 8（= 宽 × 6.25%）
+
+  ## 对比度
+  页面背景为浅色（#F7F7FB），故手柄用**深灰**填充 + **白色**箭头，保证清晰可辨。
+
+  显示尺寸（由 FastScrollbar.kt 按屏宽计算）：
+    宽 = 屏宽 × 10.22%    高 = 宽 × 1.5
+  viewport 固定 128×192，矢量缩放后内部比例天然保持。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="45dp"
+    android:viewportWidth="128"
+    android:viewportHeight="192">
+
+    <!-- 手柄背景：右侧直边贴边，左侧上下圆角（贝塞尔近似 r=51） -->
+    <path
+        android:fillColor="#FF6E6E76"
+        android:pathData="M128,0 H51 C22.83,0 0,22.83 0,51 V141 C0,169.17 22.83,192 51,192 H128 Z" />
+
+    <!-- 上箭头 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="butt"
+        android:strokeLineJoin="miter"
+        android:pathData="M51,75 L65,61 L79,75" />
+
+    <!-- 下箭头 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="butt"
+        android:strokeLineJoin="miter"
+        android:pathData="M51,119 L65,133 L79,119" />
+
+</vector>

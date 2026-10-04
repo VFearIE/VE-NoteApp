@@ -178,4 +178,5 @@
     <string name="cat_audio">音频</string>
     <string name="cat_other">其他文件</string>
     <string name="no_notes">暂无笔记</string>
+    <string name="fast_scroll_hint">快速滚动</string>
 </resources>

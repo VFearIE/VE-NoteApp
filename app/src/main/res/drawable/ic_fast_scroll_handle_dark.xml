@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  快速滚动手柄（深色页面用）。
+
+  与浅色版**几何完全一致**（同样用贝塞尔近似圆角，避开 Android 的 arc 渲染偏差），
+  仅调换明暗：
+  - 填充：深灰 → **浅灰**（深色背景上清晰可辨）
+  - 箭头：白色 → **深色**（与浅灰底形成强对比）
+
+  由 drawable-night/ 限定符自动切换；
+  同时 Compose 侧也会按当前主题亮度强制选择（覆盖应用内手动切深色但系统仍浅色的情形）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="30dp"
+    android:height="45dp"
+    android:viewportWidth="128"
+    android:viewportHeight="192">
+
+    <!-- 手柄背景（贝塞尔近似 r=51） -->
+    <path
+        android:fillColor="#FFD8D8DE"
+        android:pathData="M128,0 H51 C22.83,0 0,22.83 0,51 V141 C0,169.17 22.83,192 51,192 H128 Z" />
+
+    <!-- 上箭头 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3A3A3E"
+        android:strokeWidth="8"
+        android:strokeLineCap="butt"
+        android:strokeLineJoin="miter"
+        android:pathData="M51,75 L65,61 L79,75" />
+
+    <!-- 下箭头 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF3A3A3E"
+        android:strokeWidth="8"
+        android:strokeLineCap="butt"
+        android:strokeLineJoin="miter"
+        android:pathData="M51,119 L65,133 L79,119" />
+
+</vector>
