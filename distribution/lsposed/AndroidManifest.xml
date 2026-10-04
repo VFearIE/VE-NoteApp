@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Xposed 通用保活模块（LSPosed / Vector）
+  ★ root 版分发。
+
+  作用：让【保护名单内的应用】免疫「最近任务划卡」（= force-stop），
+        使进程不被杀死、AlarmManager 闹钟不被清空、包状态不置 stopped。
+
+  ★ 通用设计，不绑定具体应用。
+    - 作用域：**只需勾选「系统框架」**（Hook 点在 system_server 内）
+    - 保护对象：由 ProtectList 决定（内置名单 + 可选外部文件）
+      详见 README.md
+
+  ★ 与 platform 版互斥 —— 后者靠平台密钥签名 + sharedUserId=android.uid.system
+    达到同等效果，无需 root、无需本模块。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.vfearie.keepalive"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
+
+    <application
+        android:label="Xposed 保活"
+        android:allowBackup="false"
+        android:hasCode="true">
+
+        <!-- Xposed 模块标识（旧版 API 用，保留兼容） -->
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="通用保活：拦截 force-stop，使指定应用在「最近任务划卡」后进程不被杀、闹钟不被清。作用域只需勾选系统框架；保护对象见 ProtectList。" />
+        <meta-data android:name="xposedminversion" android:value="54" />
+        <!-- 默认作用域（管理器预填）: 系统框架必须勾选 -->
+        <meta-data android:name="xposedscope" android:resource="@array/module_scope" />
+    </application>
+</manifest>

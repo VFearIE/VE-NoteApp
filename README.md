@@ -99,14 +99,17 @@
 | 组成 | 说明 |
 |---|---|
 | `NoteVE-root-*.apk` | 应用本体，已用项目密钥签名 |
-| `NoteVE-LSPosed-*.apk` | Xposed / Vector 保活模块 |
+| `XposedKeepAlive-*.apk` | Xposed / Vector 保活模块（**通用**，可保护任意应用） |
 | `com.noteVE.xml` | priv-app 权限白名单 |
 
 **为什么需要保活模块**：在部分设备上，「从最近任务划掉应用」实际触发的是
 `force-stop`，会清空该应用的 `AlarmManager` 闹钟并置包状态为 `stopped`，
-导致提醒永久失效。该模块在系统框架层拦截针对本应用的 `force-stop`，从而保住提醒。
+导致提醒永久失效。该模块在系统框架层拦截针对该应用的 `force-stop`，从而保住提醒。
 
-模块为**通用设计**：作用域即保护名单，还可用于保护其它应用。
+模块为**通用设计**（不绑定任何具体应用）：
+
+- **作用域只需勾选「系统框架」**一项 —— Hook 点在 `system_server` 内
+- **保护对象**由模块内的保护名单决定（默认保护本应用，可自行增删，详见模块说明）
 
 ### B. Platform 版（ROM 集成）
 
@@ -131,7 +134,7 @@
 1. 安装 NoteVE-root-*.apk（普通安装即可）
 2. 安装 Xposed / Vector 模块 NoteVE-LSPosed-*.apk
 3. 在框架管理器（LSPosed / Vector）中启用该模块
-4. 作用域勾选：系统框架(system) + com.noteVE
+4. ★ 作用域只需勾选一项：「系统框架」（显示为 system）
 5. 重启设备（Hook 点在 system_server，作用域变更只对新进程生效）
 ```
 
@@ -191,9 +194,11 @@ app/src/main/java/com/noteVE/
 ├── backup/        备份与恢复前台服务
 └── ui/            Compose 界面（列表 / 编辑 / 权限 / 关于 / 存储…）
 
-app/src/platform/  Platform 变体专属 manifest
-distribution/      发行相关（Magisk 模块源码等）
-docs/              安装与发行文档
+app/src/platform/                Platform 变体专属 manifest
+distribution/
+├── lsposed/                     Xposed/Vector 保活模块源码（通用）
+└── magisk/                      Magisk 模块（静态 overlay）
+docs/                            安装与发行文档
 ```
 
 核心数据模型是 **Block 序列**（`domain/Block.kt`）：

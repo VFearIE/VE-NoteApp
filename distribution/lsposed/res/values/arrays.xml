@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认作用域（安装时管理器据此预填，用户可增删）。
+
+  ★ 说明：本模块是**通用**的 —— 作用域就是保护名单：
+    勾选了哪些 app，哪些 app 就获得「划卡免疫」。
+
+  「系统框架」(android) 必须勾选（Hook 点在 system_server 内），
+  其余由用户按需添加自己要保护的 app。
+-->
+<resources>
+    <string-array name="module_scope">
+        <item>android</item>
+    </string-array>
+</resources>
