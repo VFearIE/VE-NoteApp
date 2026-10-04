@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 顶面 -->
+    <path
+        android:pathData="M 27.5 41.25 L 31.5 37.25 L 71.5 33.75 L 75.5 37.25 L 80.5 32.25 L 76.5 28.75 L 36.5 32.25 L 32.5 36.25 Z"
+        android:strokeColor="#FFFAFAFA"
+        android:strokeWidth="2.2"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- 右侧面 -->
+    <path
+        android:pathData="M 75.5 37.25 L 75.5 68.75 L 80.5 63.75 L 80.5 32.25 Z"
+        android:strokeColor="#FFA0A0A0"
+        android:strokeWidth="2.2"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- 正面主面 -->
+    <path
+        android:pathData="M 31.5 37.25 Q 27.5 37.25 27.5 41.25 L 27.5 75.25 Q 27.5 79.25 31.5 78.75 L 71.5 73.25 Q 75.5 72.75 75.5 68.75 L 75.5 37.25 Q 75.5 33.25 71.5 33.75 L 31.5 37.25 Z"
+        android:strokeColor="#FFD8D8D8"
+        android:strokeWidth="2.4"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- 正面顶边高光 -->
+    <path
+        android:pathData="M 27.5 41.25 L 31.5 37.25 L 71.5 33.75 L 75.5 37.25"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 正面左边高光 -->
+    <path
+        android:pathData="M 27.5 41.25 L 27.5 75.25"
+        android:strokeColor="#FFE8E8E8"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 正面底边阴影 -->
+    <path
+        android:pathData="M 31.5 78.75 L 71.5 73.25"
+        android:strokeColor="#FF787878"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 书脊线（正面） -->
+    <path
+        android:pathData="M 37.5 37.25 L 37.5 76.75"
+        android:strokeColor="#FFA8A8A8"
+        android:strokeWidth="1.8"
+        android:fillColor="#00000000" />
+
+    <!-- 书脊线（顶面） -->
+    <path
+        android:pathData="M 37.5 37.25 L 42.5 32.25"
+        android:strokeColor="#FFA8A8A8"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 卷角主弧 -->
+    <path
+        android:pathData="M 75.5 51.25 Q 67.5 62.25 57.5 72.25"
+        android:strokeColor="#FFD0D0D0"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 卷角厚度线 -->
+    <path
+        android:pathData="M 71.5 55.25 Q 63.5 63.25 53.5 71.25"
+        android:strokeColor="#FF808080"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 卷角底部连接 -->
+    <path
+        android:pathData="M 57.5 72.25 L 53.5 71.25"
+        android:strokeColor="#FF808080"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+</vector>

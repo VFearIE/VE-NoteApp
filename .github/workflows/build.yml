@@ -1,0 +1,56 @@
+name: Build
+
+# 公开仓库的 CI：仅做「可复现构建 + 测试」，不使用任何私密凭据。
+# 产物为**未签名** APK，供任何人验证源码可编译。
+#
+# ★ 本仓库不包含签名密钥，故不产出可直接分发的签名包。
+#   签名需要你自己的 keystore，请参考 docs/INSTALL.md 在本地完成。
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: "build-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Unit tests
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Build both flavors (unsigned)
+        run: gradle assembleRootRelease assemblePlatformRelease --stacktrace
+
+      - name: Upload unsigned APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: VE-NoteApp-unsigned-apks
+          path: app/build/outputs/apk/*/release/*.apk
+          if-no-files-found: error
+          retention-days: 14

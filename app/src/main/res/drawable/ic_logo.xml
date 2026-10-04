@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <!-- 内容整体左上平移(10,3)，使可见内容几何居中于 200x200 -->
+    <!-- V -->
+    <path
+        android:pathData="M 10 27 L 60 27 L 90 117 L 120 27 L 170 27 L 105 172 L 75 172 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"/>
+    <!-- E -->
+    <path
+        android:pathData="M 140 96 L 190 96 L 190 111 L 165 111 L 165 121 L 185 121 L 185 134 L 165 134 L 165 146 L 190 146 L 190 166 L 140 166 Z"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"/>
+</vector>

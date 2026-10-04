@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 必须权限 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.GRANT_RUNTIME_PERMISSIONS" />
+    <!-- 兼容普通安装的降级权限 -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <application
+        android:name=".NoteApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.NoteApp">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 提醒触发广播：由本应用显式 PendingIntent 定向投递 -->
+        <receiver
+            android:name=".reminder.ReminderTrigger"
+            android:exported="false" />
+
+        <!-- 提醒前台服务：停驻通知 + 持续震动 -->
+        <service
+            android:name=".reminder.ReminderService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 开机重建闹钟广播 -->
+        <receiver
+            android:name=".reminder.BootReceiver"
+            android:exported="true">
+            <!--
+              开机/更新后重建提醒。三个 Action 与 BootReceiver 的处理**严格一一对应**，
+              不得出现「Manifest 声明了但代码不处理」的情况。
+
+              ★ 为什么不声明 LOCKED_BOOT_COMPLETED（direct boot）：
+                它会在用户解锁**之前**投递，而本应用的数据库位于
+                credential-protected 存储（/data/data，需解锁后才可访问），
+                此时读不到任何笔记 → 即使处理也无法重建提醒，只会白跑一次。
+                故明确不声明。（若将来迁移到 device-protected 存储，再一并开启
+                directBootAware 与 LOCKED_BOOT_COMPLETED。）
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider：「以其他方式打开」图片/录音（只暴露 attachments/ 与 recordings/） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- 备份/恢复前台服务 -->
+        <service
+            android:name=".backup.BackupService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+    </application>
+</manifest>

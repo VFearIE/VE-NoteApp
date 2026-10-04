@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  音频：四分音符（单符头 + 符干）。
+  ★ 不用双符头（十六分音符）—— 小尺寸下会糊成一团；四分音符线条最少、辨识度最高。
+  符头中心 (9,17)，符干自 (11.4,17) 竖直向上到 (11.4,6)，符干顶端接一个小旗。
+  几何关系保证不歪：符干为纯竖直直线，符头圆心落在符干左下方。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 符干（竖直，从符头右缘向上） -->
+    <path
+        android:pathData="M11.4,17 V6"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 符尾小旗（向右下弯） -->
+    <path
+        android:pathData="M11.4,6 C13.2,7 14.6,8.4 15.4,10.2"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 符头（椭圆，向左下倾斜） -->
+    <path
+        android:pathData="M9.0,14.6 C10.8,14.6 12.1,15.7 12.1,17.1 C12.1,18.5 10.8,19.6 9.0,19.6 C7.2,19.6 5.9,18.5 5.9,17.1 C5.9,15.7 7.2,14.6 9.0,14.6 Z"
+        android:fillColor="#FF000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="0.6" />
+</vector>

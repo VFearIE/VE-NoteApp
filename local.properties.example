@@ -1,0 +1,5 @@
+# 复制本文件为 local.properties，并改成你本机 Android SDK 路径。
+# Windows 示例:  sdk.dir=C\:\\Users\\you\\AppData\\Local\\Android\\Sdk
+# macOS 示例:    sdk.dir=/Users/you/Library/Android/sdk
+# Linux 示例:    sdk.dir=/home/you/Android/Sdk
+sdk.dir=/path/to/Android/Sdk

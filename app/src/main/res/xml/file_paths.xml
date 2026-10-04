@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 路径声明。
+  用途：把应用私有目录下的图片/录音临时暴露给外部应用
+  （「以其他方式打开」→ 图库查看器、文件管理器、分享导出等）。
+
+  ★ 安全性：files-path 只暴露 filesDir 下的 attachments/ 与 recordings/，
+    不暴露数据库与其它私有数据；且已授予权限才可读。
+-->
+<paths>
+    <!-- 图片附件 -->
+    <files-path name="attachments" path="attachments/" />
+    <!-- 录音 -->
+    <files-path name="recordings" path="recordings/" />
+</paths>

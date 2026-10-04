@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NoteApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#FFF7F7FB</item>
+        <item name="android:textColorPrimary">#FF1A1B20</item>
+        <item name="android:textColorSecondary">#FF45464F</item>
+    </style>
+</resources>

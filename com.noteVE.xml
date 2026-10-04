@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  VE笔记 priv-app 权限白名单。
+
+  ★ 文件名必须是「包名.xml」= com.noteVE.xml，不能是 privapp-permissions-*.xml。
+  ★ 放置路径：/system/etc/permissions/com.noteVE.xml
+
+  仅列出「signature|privileged」级别的权限（普通/危险权限由系统自动授予或运行时申请）。
+  此处每一项都让 priv-app 无需用户确认直接获得。
+-->
+<permissions>
+    <privapp-permissions package="com.noteVE">
+
+        <!-- 精确闹钟：signature|privileged，必须白名单，否则提醒不准时 -->
+        <permission name="android.permission.USE_EXACT_ALARM" />
+
+        <!-- 静默自授运行时权限的能力（麦克风/通知/存储/震动） -->
+        <permission name="android.permission.GRANT_RUNTIME_PERMISSIONS" />
+
+        <!-- 前台服务：提醒停驻通知 / 备份导出 -->
+        <permission name="android.permission.FOREGROUND_SERVICE" />
+        <permission name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    </privapp-permissions>
+</permissions>

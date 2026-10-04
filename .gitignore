@@ -1,0 +1,40 @@
+# ── Gradle / 构建产物 ──────────────────────────────────────────
+*.iml
+.gradle
+/local.properties
+.idea
+.DS_Store
+build
+/captures
+.externalNativeBuild
+.cxx
+.gradle-dist/
+app/build/
+
+# ── 签名与密钥（绝对不得提交）────────────────────────────────
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore.properties
+signing.properties
+
+# ── 凭据 ─────────────────────────────────────────────────────
+*.token
+.gh-token
+.git-credentials
+.env
+.env.*
+
+# ── 本地产物 ─────────────────────────────────────────────────
+*.apk
+!app/**/*.apk
+*.aab
+*.zip
+!gradle/wrapper/gradle-wrapper.jar
+
+# ── 编辑器 / 系统 ────────────────────────────────────────────
+.vscode/
+*.swp
+*~
+Thumbs.db

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  platform 版专属 manifest 片段（由 manifest merger 合并进主 manifest）。
+
+  ★ 用途：声明 sharedUserId=android.uid.system，使应用与系统时钟同级运行（uid 1000）。
+  ★ 前提：APK **必须用 ROM 平台密钥签名**，否则安装时签名校验失败。
+  ★ 效果：系统不会像回收普通应用那样回收本进程；force-stop（划卡）也不会发生。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sharedUserId="android.uid.system" />
