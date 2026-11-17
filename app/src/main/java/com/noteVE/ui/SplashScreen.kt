@@ -1,5 +1,7 @@
 package com.noteVE.ui
 
+import androidx.compose.ui.draw.drawBehind
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -51,7 +53,16 @@ fun SplashScreen(onFinished: () -> Unit) {
     }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black),
+        modifier = Modifier.fillMaxSize().background(Color.Black).drawBehind {
+            // Malek：标志背后的品牌光晕，随标志淡入淡出
+            drawCircle(
+                androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(Color(0xFF5B8DEF).copy(alpha = 0.35f * alpha.value), Color.Transparent),
+                    center, size.minDimension * 0.55f * scale.value
+                ),
+                size.minDimension * 0.55f * scale.value
+            )
+        },
         contentAlignment = Alignment.Center
     ) {
         Image(

@@ -19,7 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -93,9 +92,10 @@ fun StorageScreen(onBack: () -> Unit, onOpenNote: (Long) -> Unit) {
     }
 
     val detail = selected
-    Scaffold(
+    GlassScaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = {
                     Text(stringResource(if (detail == null) R.string.storage else R.string.storage_detail))
                 },
@@ -105,7 +105,7 @@ fun StorageScreen(onBack: () -> Unit, onOpenNote: (Long) -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent
                 )
             )
         }
@@ -132,7 +132,7 @@ private fun Overview(
     padding: androidx.compose.foundation.layout.PaddingValues,
     onPick: (StorageStats.NoteUsage) -> Unit,
 ) {
-    LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = padding) {
         item {
             SettingsGroup(header = stringResource(R.string.storage_total)) {
                 Column(Modifier.padding(14.dp)) {

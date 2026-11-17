@@ -12,6 +12,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -257,6 +258,8 @@ fun NoteAppTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
+    val uiStyle by com.noteVE.domain.Settings.uiStyle.collectAsState()
+    val vivid = uiStyle == com.noteVE.domain.Settings.STYLE_VIVID
 
     // 低版本动态方案（API < 31）：后台算一次，就绪前先用静态配色
     var localScheme by remember { mutableStateOf<ColorScheme?>(null) }
@@ -289,9 +292,13 @@ fun NoteAppTheme(
         SideEffect {
             val window = view.context.findActivity()?.window ?: return@SideEffect
             @Suppress("DEPRECATION")
-            window.statusBarColor = colorScheme.surface.toArgb()
+            // Malek：沉浸式，极光铺满到系统栏下方
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.statusBarColor = if (darkTheme) android.graphics.Color.BLACK
+            else if (vivid) android.graphics.Color.TRANSPARENT else colorScheme.surface.toArgb()
             @Suppress("DEPRECATION")
-            window.navigationBarColor = colorScheme.surface.toArgb()
+            window.navigationBarColor = if (darkTheme) android.graphics.Color.BLACK else android.graphics.Color.TRANSPARENT
+            if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
             WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }

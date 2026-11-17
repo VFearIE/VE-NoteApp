@@ -15,7 +15,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -81,17 +80,19 @@ fun PermissionScreen(onBack: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
+    GlassScaffold(
+
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.perm_section)) },
+            GlassTopAppBar(
+                title = { Text(stringResource(R.string.perm_section), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, brush = brandGradient())) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.ic_action_back), stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent
                 )
             )
         }
@@ -99,8 +100,8 @@ fun PermissionScreen(onBack: () -> Unit) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .padding(padding)
                 .padding(vertical = 4.dp)
         ) {
             // ---------- 系统应用状态 ----------
@@ -110,9 +111,9 @@ fun PermissionScreen(onBack: () -> Unit) {
             ) {
                 PermRow(
                     icon = R.drawable.ic_perm_system,
-                    title = stringResource(R.string.perm_system_app),
-                    subtitle = stringResource(R.string.perm_system_app_desc),
-                    checked = isPriv,
+                    title = stringResource(if (Permissions.isPlatformIdentity()) R.string.edition_platform else R.string.perm_system_app),
+                    subtitle = stringResource(if (Permissions.isPlatformIdentity()) R.string.platform_identity_desc else R.string.perm_system_app_desc),
+                    checked = isPriv || Permissions.isPlatformIdentity(),
                     locked = true,           // 非用户可控，仅展示
                     tint = Color(0xFF34C759),
                     onToggle = { }

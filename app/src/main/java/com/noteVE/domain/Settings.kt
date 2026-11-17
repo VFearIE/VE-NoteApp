@@ -15,6 +15,8 @@ object Settings {
     const val THEME_SYSTEM = "system"
     const val THEME_LIGHT = "light"
     const val THEME_DARK = "dark"
+    const val STYLE_MINIMAL = "minimal"
+    const val STYLE_VIVID = "vivid"
     const val SORT_NAME = "name"
     const val SORT_LAST_OPENED = "lastOpened"
 
@@ -29,6 +31,9 @@ object Settings {
     private val _sortReverse = MutableStateFlow(false)
     private val _warnPermissionMissing = MutableStateFlow(true)
     private val _dynamicColor = MutableStateFlow(true)
+    private val _uiStyle = MutableStateFlow(STYLE_VIVID)
+    /** 界面风格：简约白调 / 未来炫彩（默认）。 */
+    val uiStyle: StateFlow<String> = _uiStyle
     val theme: StateFlow<String> = _theme
     val language: StateFlow<String> = _language
     val sortBy: StateFlow<String> = _sortBy
@@ -52,8 +57,10 @@ object Settings {
         _sortReverse.value = prefs.getBoolean("sortReverse", false)
         _warnPermissionMissing.value = prefs.getBoolean("warnPermissionMissing", true)
         _dynamicColor.value = prefs.getBoolean("dynamicColor", true)
+        _uiStyle.value = prefs.getString("uiStyle", STYLE_VIVID) ?: STYLE_VIVID
     }
 
+    fun setUiStyle(v: String) { _uiStyle.value = v; prefs.edit().putString("uiStyle", v).apply() }
     fun setTheme(v: String) { _theme.value = v; prefs.edit().putString("theme", v).apply() }
     fun setLanguage(v: String) { _language.value = v; prefs.edit().putString("language", v).apply() }
     fun setSort(by: String, reverse: Boolean) {

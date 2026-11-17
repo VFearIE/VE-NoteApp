@@ -360,8 +360,14 @@ final class SystemServerSide {
                 Log.w("无法确定发送方 uid（本 ROM 未开放相关 API），放行: " + pkg);
                 return true;   // fail-open，理由见上
             }
+            // Android 15 OEM builds return -1 when sender identity is unavailable.
+            // Treat it like UID_UNKNOWN; fail-closed here disables every self-report.
+            if (uid == -1) {
+                Log.w("发送方 uid 为 -1（无法确定），按 fail-open 放行: " + pkg);
+                return true;
+            }
             if (uid < 0) {
-                Log.w("发送方 uid 无效，拒绝: pkg=" + pkg);
+                Log.w("发送方 uid 无效(" + uid + ")，拒绝: pkg=" + pkg);
                 return false;
             }
             try {

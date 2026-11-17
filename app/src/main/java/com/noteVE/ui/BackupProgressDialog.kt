@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -101,7 +100,7 @@ internal fun BackupProgressDialog(state: BackupProgressState) {
         BackupPhase.SUCCESS -> R.string.backup_progress_success
         BackupPhase.FAILURE -> R.string.backup_progress_failure
     }
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = {}, // Results remain until explicitly acknowledged.
         icon = { PhaseBadge(phase) },
         title = {

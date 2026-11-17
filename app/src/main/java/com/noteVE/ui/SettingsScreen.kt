@@ -17,7 +17,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -56,6 +55,7 @@ import com.noteVE.domain.Settings
 fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
     val context = LocalContext.current
     val theme by Settings.theme.collectAsState()
+    val uiStyle by Settings.uiStyle.collectAsState()
     val language by Settings.language.collectAsState()
     val sortBy by Settings.sortBy.collectAsState()
     val sortReverse by Settings.sortReverse.collectAsState()
@@ -64,17 +64,19 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
     val reminderMuted by Settings.reminderMuted.collectAsState()
     val reminderVibration by Settings.reminderVibrationEnabled.collectAsState()
 
-    Scaffold(
+    GlassScaffold(
+
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings)) },
+            GlassTopAppBar(
+                title = { Text(stringResource(R.string.settings), style = MaterialTheme.typography.headlineSmall.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, brush = brandGradient())) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(painterResource(R.drawable.ic_action_back), stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent
                 )
             )
         }
@@ -82,8 +84,8 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
+                .padding(padding)
         ) {
             // 分段错位入场（Vector 式克制动画）
             var visible by remember { mutableStateOf(false) }
@@ -126,6 +128,16 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
                             ),
                             selected = theme,
                             onSelect = { Settings.setTheme(it) }
+                        )
+                        SettingsChoiceRow(
+                            iconRes = R.drawable.ic_set_palette,
+                            title = stringResource(R.string.ui_style),
+                            options = listOf(
+                                Settings.STYLE_MINIMAL to stringResource(R.string.ui_style_minimal),
+                                Settings.STYLE_VIVID to stringResource(R.string.ui_style_vivid)
+                            ),
+                            selected = uiStyle,
+                            onSelect = { Settings.setUiStyle(it) }
                         )
                         // ★ 动态取色在所有受支持版本都可用（低版本由应用内本地生成）
                         SettingsSwitchRow(

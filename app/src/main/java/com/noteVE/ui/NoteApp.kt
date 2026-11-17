@@ -38,12 +38,14 @@ fun NoteApp(initialNoteId: Long?, launchSequence: Long = 0L) {
             return@NoteAppTheme
         }
         val nav = rememberNavController()
+        AuroraScaffoldRoot {
         // 页面转场动画（参考 Vector：短促、克制、tween 驱动）
         NavHost(
             navController = nav,
             startDestination = "list",
             enterTransition = {
-                slideInHorizontally(animationSpec = tween(300, easing = Motion.Emphasized)) { it / 5 } + fadeIn(tween(200))
+                slideInHorizontally(animationSpec = tween(320, easing = Motion.Emphasized)) { it / 4 } + fadeIn(tween(220)) +
+                    androidx.compose.animation.scaleIn(tween(320, easing = Motion.Emphasized), initialScale = 0.94f)
             },
             exitTransition = {
                 slideOutHorizontally(animationSpec = tween(240, easing = Motion.Emphasized)) { -it / 8 } + fadeOut(tween(160))
@@ -52,7 +54,8 @@ fun NoteApp(initialNoteId: Long?, launchSequence: Long = 0L) {
                 slideInHorizontally(animationSpec = tween(300, easing = Motion.Emphasized)) { -it / 8 } + fadeIn(tween(200))
             },
             popExitTransition = {
-                slideOutHorizontally(animationSpec = tween(240, easing = Motion.Emphasized)) { it / 5 } + fadeOut(tween(160))
+                slideOutHorizontally(animationSpec = tween(260, easing = Motion.Emphasized)) { it / 4 } + fadeOut(tween(180)) +
+                    androidx.compose.animation.scaleOut(tween(260, easing = Motion.Emphasized), targetScale = 0.94f)
             }
         ) {
             composable("list") {
@@ -99,6 +102,7 @@ fun NoteApp(initialNoteId: Long?, launchSequence: Long = 0L) {
                     }
                 )
             }
+        }
         }
         LaunchedEffect(initialNoteId, launchSequence) {
             if (initialNoteId != null) nav.navigate("edit/$initialNoteId")

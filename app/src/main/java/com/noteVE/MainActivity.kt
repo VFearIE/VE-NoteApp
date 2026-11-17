@@ -26,13 +26,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // priv-app 静默自授；非 priv-app（二次分发）退回标准申请
-        if (Permissions.isPrivApp(this)) {
-            Permissions.selfGrant(this)
-        } else {
-            val missing = Permissions.missing(this)
-            if (missing.isNotEmpty()) requestPermissions(missing, 1)
-        }
+        // Best effort only; missing grants never block notebook functionality.
+        Permissions.selfGrant(this)
+        val missing = Permissions.missing(this)
+        if (missing.isNotEmpty()) requestPermissions(missing, 1)
         launchNoteId = intent?.getLongExtra(EXTRA_NOTE_ID, -1L) ?: -1L
         setContent {
             NoteApp(initialNoteId = launchNoteId.takeIf { it > 0 }, launchSequence = launchSequence)

@@ -62,17 +62,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -318,12 +314,14 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
 
     val imeVisible = rememberImeVisible()
 
-    Scaffold(
+    GlassScaffold(
+
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         topBar = {
-            TopAppBar(
+            GlassTopAppBar(
                 title = {},
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent
                 ),
                 navigationIcon = {
                     IconButton(onClick = { scope.launch { vm.save(); onBack() } }) {
@@ -355,23 +353,23 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                         vm.toggleReadOnly()
                         toast(context, if (!readOnly) R.string.readonly_on else R.string.readonly_off)
                     })
-                    DropdownMenu(expanded = insertOpen, onDismissRequest = { insertOpen = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.add_image)) }, onClick = {
+                    GlassMenu(expanded = insertOpen, onDismissRequest = { insertOpen = false }) {
+                        GlassMenuItem(text = { Text(stringResource(R.string.add_image)) }, onClick = {
                             insertOpen = false
                             if (readOnly) toast(context, R.string.readonly_blocked) else imagePicker.launch("image/*")
                         })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.insert_voice)) }, onClick = { insertOpen = false; voiceTempFile = vm.createTempRecordingFile(); showVoiceDialog = true })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.insert_file)) }, onClick = {
+                        GlassMenuItem(text = { Text(stringResource(R.string.insert_voice)) }, onClick = { insertOpen = false; voiceTempFile = vm.createTempRecordingFile(); showVoiceDialog = true })
+                        GlassMenuItem(text = { Text(stringResource(R.string.insert_file)) }, onClick = {
                             insertOpen = false
                             if (readOnly) toast(context, R.string.readonly_blocked) else filePicker.launch(arrayOf("*/*"))
                         })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { insertOpen = false; exportNote() })
+                        GlassMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { insertOpen = false; exportNote() })
                     }
                     IconButton(onClick = { menuOpen = true }) { Icon(painterResource(R.drawable.ic_action_more), stringResource(R.string.more)) }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, onClick = { vm.updatePinned(!pinned); menuOpen = false })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { menuOpen = false; exportNote() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; if (!readOnly) confirmDelete = true })
+                    GlassMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        GlassMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, onClick = { vm.updatePinned(!pinned); menuOpen = false })
+                        GlassMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { menuOpen = false; exportNote() })
+                        GlassMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; if (!readOnly) confirmDelete = true })
                     }
                 }
             )
@@ -523,7 +521,7 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
         }, { renameTarget = null })
     }
     if (confirmDelete) {
-        AlertDialog(
+        GlassAlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text(stringResource(R.string.delete)) },
             text = { Text(stringResource(R.string.delete_confirm, title.ifBlank { stringResource(R.string.untitled) })) },
@@ -550,8 +548,7 @@ private fun FormattingToolbar(
             //   父容器按固定高度测量时会把工具栏压扁成一条细缝（表现为「只露出一点」）。
             .height(56.dp)
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .glassCard(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
             .padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
             // ★ 容器不可获取焦点：否则点击格式图标会把焦点从编辑框抢走
             //   → 输入法收起 → 工具栏随 imeVisible 变化而闪退
@@ -616,7 +613,7 @@ fun ReminderDialog(
         ).show()
     }
 
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.set_reminder)) },
         text = {
@@ -654,7 +651,7 @@ private fun ColorDialog(onPick: (Int) -> Unit, onDismiss: () -> Unit) {
         if (dark) Color(0xFFFFFFFF) else Color(0xFF000000),   // 默认色（黑↔白）
         Color(0xFFE53935), Color(0xFFFF9800), Color(0xFF43A047), Color(0xFF1E88E5), Color(0xFF8E24AA)
     )
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.text_color)) },
         text = {
@@ -682,7 +679,7 @@ private fun RenameDialog(current: String, onConfirm: (String) -> Unit, onDismiss
     var text by remember {
         mutableStateOf(if (current.contains('.')) current.substringBeforeLast('.') else current)
     }
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.rename)) },
         text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },

@@ -15,8 +15,8 @@ android {
         applicationId = "com.noteVE"
         minSdk = 24
         targetSdk = 35
-        versionCode = 303
-        versionName = "3.0.0"
+        versionCode = 305
+        versionName = "3.0.1"
     }
 
     /**

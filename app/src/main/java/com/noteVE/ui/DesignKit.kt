@@ -65,13 +65,16 @@ fun IconBlock(
     Box(
         Modifier
             .size(size)
-            .background(blockColor.copy(alpha = 0.14f), RoundedCornerShape(9.dp)),
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(if (LocalVivid.current) listOf(blockColor.copy(alpha = 0.95f), blockColor.copy(alpha = 0.70f)) else listOf(blockColor, blockColor)),
+                RoundedCornerShape(10.dp)
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painterResource(painterRes),
             contentDescription = null,
-            tint = blockColor,
+            tint = Color.White,
             modifier = Modifier.size(18.dp)
         )
     }
@@ -97,8 +100,7 @@ fun SettingsGroup(
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                .glassCard(RoundedCornerShape(24.dp)),
             content = content
         )
         footer?.let {
@@ -278,13 +280,15 @@ fun SegmentedPill(
 ) {
     val idx = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
     val pos by androidx.compose.animation.core.animateFloatAsState(idx.toFloat(), Motion.settle(), label = "seg")
-    val selColor = MaterialTheme.colorScheme.primaryContainer
+    val vivid = LocalVivid.current
+    val selectedColor = MaterialTheme.colorScheme.primaryContainer
+    val selBrush = if (vivid) brandGradient() else androidx.compose.ui.graphics.Brush.linearGradient(listOf(selectedColor, selectedColor))
     Box(
         modifier
             .fillMaxWidth()
             .heightIn(min = 42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+            .background(if (vivid) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f) else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
             .padding(3.dp)
     ) {
         val n = options.size
@@ -292,7 +296,7 @@ fun SegmentedPill(
             Modifier.matchParentSize().drawBehind {
                 val w = size.width / n
                 drawRoundRect(
-                    color = selColor,
+                    brush = selBrush,
                     topLeft = androidx.compose.ui.geometry.Offset(w * pos, 0f),
                     size = androidx.compose.ui.geometry.Size(w, size.height),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx())
@@ -303,7 +307,7 @@ fun SegmentedPill(
             options.forEachIndexed { i, (value, label) ->
                 val on = i == idx
                 val c by androidx.compose.animation.animateColorAsState(
-                    if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (on && vivid) Color.White else if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     tween(180), label = "segc"
                 )
                 Box(

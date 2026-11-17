@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -98,7 +97,7 @@ fun RecordingDialog(
         onDispose { recorder.stopAndRelease() }
     }
 
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = { recorder.stopAndRelease(); onCancel() },
         title = { Text(stringResource(R.string.insert_voice)) },
         text = {

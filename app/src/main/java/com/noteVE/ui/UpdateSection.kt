@@ -44,6 +44,18 @@ fun UpdateSection() {
     val model: UpdateViewModel = viewModel(key = "ve-manual-update", factory = factory)
     val state by model.state.collectAsState()
     val platform = BuildConfig.FLAVOR == "platform"
+    if (platform) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.update_title), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.update_platform), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { openUpdateLink(context, UpdatePolicy.RELEASES) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.update_open_releases))
+                }
+            }
+        }
+        return
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.update_title), style = MaterialTheme.typography.titleLarge)

@@ -114,7 +114,7 @@
     <string name="restart_theme">Restart the app to apply the theme</string>
     <string name="restart_language">Restart the app to apply the language</string>
     <string name="perm_section">Permissions</string>
-    <string name="perm_desc">Normally auto-granted as a system app; these are fallbacks.</string>
+    <string name="perm_desc">All notebook features work with a normal install. Optional system and keep-alive modules improve reminder reliability. Permission states are queried from Android.</string>
     <string name="perm_notification">Notifications</string>
     <string name="perm_notification_desc">Show reminder notifications</string>
     <string name="perm_microphone">Microphone</string>
@@ -126,7 +126,7 @@
     <string name="perm_exact_alarm">Exact alarms</string>
     <string name="perm_exact_alarm_desc">Remind at the exact minute</string>
     <string name="perm_system_app">System app</string>
-    <string name="perm_system_app_desc">Auto-granted privileges</string>
+    <string name="perm_system_app_desc">Privileged installation does not grant every permission. The companion module initializes reminder access.</string>
     <string name="granted">Granted</string>
     <string name="not_granted">Not granted</string>
     <string name="go_settings">Open settings</string>
@@ -178,4 +178,8 @@
     <string name="cat_other">Other</string>
     <string name="no_notes">No notes yet</string>
     <string name="fast_scroll_hint">Fast scroll</string>
+    <string name="ui_style">Style</string>
+    <string name="ui_style_minimal">Minimal White</string>
+    <string name="ui_style_vivid">Future Vivid</string>
+    <string name="platform_identity_desc">ROM edition; system UID is verified from the running process.</string>
 </resources>

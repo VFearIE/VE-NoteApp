@@ -114,7 +114,7 @@
     <string name="restart_theme">重启应用以应用主题设置</string>
     <string name="restart_language">重启应用以应用语言设置</string>
     <string name="perm_section">授权相关</string>
-    <string name="perm_desc">正常情况下作为系统应用已自动授予；此处为冗余方案。</string>
+    <string name="perm_desc">普通安装可使用全部笔记功能；系统模块与保活模块仅用于增强提醒可靠性。权限状态以系统实查为准。</string>
     <string name="perm_notification">通知</string>
     <string name="perm_notification_desc">显示提醒通知</string>
     <string name="perm_microphone">麦克风</string>
@@ -126,7 +126,7 @@
     <string name="perm_exact_alarm">精确闹钟</string>
     <string name="perm_exact_alarm_desc">准点提醒</string>
     <string name="perm_system_app">系统应用</string>
-    <string name="perm_system_app_desc">自动授予特权</string>
+    <string name="perm_system_app_desc">特权安装不等于所有权限已授予；提醒初始化授权由配套模块处理。</string>
     <string name="granted">已授权</string>
     <string name="not_granted">未授权</string>
     <string name="go_settings">前往设置</string>
@@ -178,4 +178,8 @@
     <string name="cat_other">其他文件</string>
     <string name="no_notes">暂无笔记</string>
     <string name="fast_scroll_hint">快速滚动</string>
+    <string name="ui_style">风格</string>
+    <string name="ui_style_minimal">简约白调</string>
+    <string name="ui_style_vivid">未来炫彩</string>
+    <string name="platform_identity_desc">平台发行版，当前是否以系统 UID 运行由实际进程身份核验。</string>
 </resources>

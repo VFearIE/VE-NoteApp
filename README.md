@@ -258,3 +258,16 @@ optimized for small screens (smartwatches) while remaining usable on phones.
   **Android 9** smartwatch only; other versions are code-level adaptations, not device-verified.
 - **Editions**: Root (with an Xposed/Vector keep-alive module) and Platform (signed with your ROM key).
 - **License**: Apache-2.0.
+
+
+### 3.0.1 发行说明
+
+PrivApp（Root）APK 支持普通安装体验全部笔记功能；安装 Magisk 系统模块与可选 Xposed 保活模块可加强提醒可靠性。保护模块不是应用功能的前置条件。
+
+Platform 面向 ROM 集成，APK 必须由目标 ROM 平台密钥签名，使用 android.uid.system；不能使用 Root APK 覆盖更新。系统身份不代表对所有 OEM/root 强停路径绝对免疫。
+
+白名单只控制 signature|privileged 权限，不会授予 normal、dangerous 或 AppOp。当前清单保留空白名单节点；GRANT_RUNTIME_PERMISSIONS 在 AOSP 是 signature|installer|verifier，不可因 priv-app 身份假定获得。Android 14+ 全屏意图需 AppOp；配套 Magisk 模块在首个启动按版本初始化提醒权限，后续用户撤销不会每次开机强行覆盖。未知来源安装仍由用户控制。
+
+保活 APK 配套版本包含 Android 15 发件 UID=-1 兼容修复，并保留 Android 9 回退；作用域=保护对象。原 Debug 签名模块与 REX 签名模块不兼容覆盖，请勿直接卸载正在保护其他应用的旧模块。先确认现役证书并备份框架配置。
+
+签名私钥、口令不在此公开仓库或发布附件中。备份格式不因界面风格改变。

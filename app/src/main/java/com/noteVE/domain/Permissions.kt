@@ -54,25 +54,18 @@ object Permissions {
     fun isPrivApp(context: Context): Boolean = try {
         val ai = context.packageManager.getApplicationInfo(context.packageName, 0)
 
-        // ② FLAG_SYSTEM：公开常量，最可靠
-        val isSystem = (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-
-        // ① PRIVATE_FLAG_PRIVILEGED：特权应用的权威标志（反射，失败不影响结果）
         val privileged = runCatching {
             val f = android.content.pm.ApplicationInfo::class.java.getField("privateFlags")
-            (f.getInt(ai) and (1 shl 3)) != 0     // PRIVATE_FLAG_PRIVILEGED = 1 << 3
+            (f.getInt(ai) and (1 shl 3)) != 0
         }.getOrDefault(false)
-
-        // ③ 路径兜底
         val pathHit = listOfNotNull(ai.sourceDir, ai.publicSourceDir).any {
-            it.startsWith("/system/priv-app/") ||
-                it.startsWith("/product/priv-app/") ||
-                it.startsWith("/system_ext/priv-app/") ||
-                it.startsWith("/system/app/")
+            it.startsWith("/system/priv-app/") || it.startsWith("/product/priv-app/") ||
+                it.startsWith("/system_ext/priv-app/") || it.startsWith("/vendor/priv-app/")
         }
-
-        isSystem || privileged || pathHit
+        privileged || pathHit
     } catch (e: Exception) { false }
+
+    fun isPlatformIdentity(): Boolean = Process.myUid() % 100000 == Process.SYSTEM_UID
 
     /** 需要运行时授权的危险权限（按 SDK 区分）。 */
     fun requiredRuntimePermissions(): Array<String> {
@@ -95,7 +88,7 @@ object Permissions {
 
     /** priv-app 静默授予全部运行时权限（反射隐藏 API，需 GRANT_RUNTIME_PERMISSIONS 特权）。 */
     fun selfGrant(context: Context) {
-        if (!isPrivApp(context)) return
+        if (!isPlatformIdentity() && context.checkSelfPermission("android.permission.GRANT_RUNTIME_PERMISSIONS") != PackageManager.PERMISSION_GRANTED) return
         val pm = context.packageManager
         val user = Process.myUserHandle()
         val method = runCatching {
