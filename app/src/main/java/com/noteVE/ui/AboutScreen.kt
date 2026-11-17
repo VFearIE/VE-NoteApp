@@ -139,7 +139,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(20.dp)) {
                     InfoLine(stringResource(R.string.about_author), "VFearIE")
-                    InfoLine(stringResource(R.string.about_release_date), "2026-10-02")
+                    InfoLine(stringResource(R.string.about_release_date), "2026-11-17")
                     TextButton(onClick = { showLicenses = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.open_source_licenses))
                     }
