@@ -191,13 +191,32 @@ class NoteEditText(context: Context) : EditText(context) {
     /** 兼容旧调用名。 */
     fun applyLinkColor(darkMode: Boolean) = applyTheme(darkMode)
 
+    private var downX = 0f
+    private var downY = 0f
+    private var downTime = 0L
+    private var linkTap = false
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // 命中链接：直接交给系统选择「打开方式」，不移动光标
-        if (event.action == MotionEvent.ACTION_UP) {
-            val url = urlAt(event.x, event.y)
-            if (url != null) {
-                openUrl(url)
-                return true
+        val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x; downY = event.y; downTime = event.eventTime; linkTap = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (kotlin.math.abs(event.x - downX) > slop || kotlin.math.abs(event.y - downY) > slop) linkTap = false
+            }
+            MotionEvent.ACTION_CANCEL -> linkTap = false
+            MotionEvent.ACTION_UP -> {
+                val shortTap = linkTap && event.eventTime - downTime < android.view.ViewConfiguration.getLongPressTimeout()
+                linkTap = false
+                if (shortTap && !hasSelection()) {
+                    val url = urlAt(event.x, event.y)
+                    if (url != null && url == urlAt(downX, downY)) {
+                        super.onTouchEvent(event)
+                        openUrl(url)
+                        return true
+                    }
+                }
             }
         }
         return super.onTouchEvent(event)

@@ -12,4 +12,5 @@
     <files-path name="attachments" path="attachments/" />
     <!-- 录音 -->
     <files-path name="recordings" path="recordings/" />
+    <cache-path name="updates" path="updates/" />
 </paths>

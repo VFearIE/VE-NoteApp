@@ -2,6 +2,7 @@ package com.noteVE.domain
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -76,8 +77,7 @@ object Permissions {
     /** 需要运行时授权的危险权限（按 SDK 区分）。 */
     fun requiredRuntimePermissions(): Array<String> {
         val list = mutableListOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.VIBRATE
+            Manifest.permission.RECORD_AUDIO
         )
         if (Build.VERSION.SDK_INT >= 33) {
             list.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -116,10 +116,47 @@ object Permissions {
     fun runtimeGranted(context: Context, perm: String): Boolean =
         context.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
 
-    /** 通知栏权限（POST_NOTIFICATIONS 或 SDK<33 时视为已授）。 */
+    /** Actual app-wide notification state; privileged installation is not an exemption. */
     fun notificationsEnabled(context: Context): Boolean =
-        if (Build.VERSION.SDK_INT >= 33) runtimeGranted(context, Manifest.permission.POST_NOTIFICATIONS)
-        else NotificationManagerCompat.from(context).areNotificationsEnabled()
+        (Build.VERSION.SDK_INT < 33 || runtimeGranted(context, Manifest.permission.POST_NOTIFICATIONS)) &&
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    /** API <34 has no separate user-facing full-screen special access. */
+    fun fullScreenIntentGranted(context: Context): Boolean =
+        if (Build.VERSION.SDK_INT >= 34) runCatching {
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).canUseFullScreenIntent()
+        }.getOrDefault(false) else true
+
+    fun requestFullScreenIntent(context: Context) {
+        if (Build.VERSION.SDK_INT < 34) return
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                .setData(Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { openAppSettings(context) }
+    }
+
+    fun openNotificationSettings(context: Context) {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { openAppSettings(context) }
+    }
+
+    /** First request uses the runtime dialog; repeat/denied requests have a usable settings path. */
+    fun requestNotifications(activity: Activity) {
+        if (Build.VERSION.SDK_INT >= 33 && !runtimeGranted(activity, Manifest.permission.POST_NOTIFICATIONS)) {
+            val prefs = activity.getSharedPreferences("permission_requests", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("notification_requested", false) ||
+                activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                prefs.edit().putBoolean("notification_requested", true).apply()
+                activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+                return
+            }
+        }
+        openNotificationSettings(activity)
+    }
 
     /** 精确闹钟：SDK<31 视为默认拥有。 */
     fun exactAlarmGranted(context: Context): Boolean =

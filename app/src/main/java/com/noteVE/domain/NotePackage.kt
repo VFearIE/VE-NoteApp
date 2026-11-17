@@ -33,6 +33,7 @@ sealed class PackageData {
 object NotePackage {
 
     private const val META_JSON = "meta.json"
+    private const val INDEX_JSON = "attachment-index.json"
 
     // ── 安全上限（防止恶意/损坏包导致 OOM 或写坏文件系统）────────
     /** 单个条目解压上限。 */
@@ -41,94 +42,99 @@ object NotePackage {
     private const val MAX_TOTAL_BYTES = 1024L * 1024 * 1024     // 1 GB
     /** 整包条目数上限。 */
     private const val MAX_ENTRIES = 20_000
-    /** 附件文件名长度上限（UTF-8 字节）。 */
-    private const val MAX_NAME_BYTES = 200
 
-    /**
-     * 校验并规范化 tar 条目名。
-     *
-     * ★ 安全关键：旧实现直接把 `attachments/<name>` 当成文件名交给 `File(dir, name)`，
-     *   若包里含 `attachments/../../x` 之类条目即可**写出应用私有目录之外**（路径穿越）。
-     *   这里统一拒绝：绝对路径、`..` 段、空名、控制字符、过长名。
-     *
-     * @return 安全的名字；不安全返回 null（整包视为无效）
-     */
-    private fun sanitizeEntryName(raw: String): String? {
-        if (raw.isBlank()) return null
-        // 统一分隔符后按段检查
-        val normalized = raw.replace('\\', '/')
-        if (normalized.startsWith("/")) return null              // 绝对路径
-        val parts = normalized.split('/')
-        if (parts.any { it == ".." || it == "." || it.isEmpty() }) return null
-        // 控制字符 / 保留字符
-        if (normalized.any { it.code < 0x20 || it == '\u007f' }) return null
-        if (normalized.toByteArray(Charsets.UTF_8).size > MAX_NAME_BYTES) return null
-        return normalized
-    }
     private const val NOTE_JSON = "note.json"
     private const val NOTES_JSON = "notes.json"
 
-    fun writeSingle(out: OutputStream, note: PackedNote, attachments: Map<String, ByteArray>) {
+    fun writeSingle(out: OutputStream, note: PackedNote, attachments: Map<String, ByteArray>) =
+        write(out, listOf(note), attachments, false)
+
+    fun writeFull(out: OutputStream, notes: List<PackedNote>, attachments: Map<String, ByteArray>) =
+        write(out, notes, attachments, true)
+
+    /** v2 uses short tar keys; UTF-8 display names live losslessly in the JSON index. */
+    private fun write(out: OutputStream, notes: List<PackedNote>, attachments: Map<String, ByteArray>, full: Boolean) {
+        val normalized = LinkedHashMap<String, ByteArray>()
+        for ((key, bytes) in attachments) {
+            val logical = if ('/' in key) AttachmentNames.requireKey(key) else {
+                AttachmentNames.requireSafe(key)
+                val matches = notes.flatMap { it.blocks }.mapNotNull { AttachmentNames.key(it) }
+                    .filter { it.substringAfter('/') == key }.distinct()
+                require(matches.size <= 1) { "Ambiguous legacy attachment key: $key" }
+                matches.firstOrNull() ?: "attachments/$key"
+            }
+            require(normalized.put(logical, bytes) == null) { "Duplicate attachment key" }
+        }
+        for (note in notes) for (block in note.blocks) {
+            AttachmentNames.key(block)?.let { require(normalized.containsKey(it)) { "Missing attachment: $it" } }
+        }
+        val index = JSONObject()
+        normalized.keys.forEachIndexed { i, key -> index.put(key, "blobs/$i") }
+        val manifest = if (full) JSONArray().apply { notes.forEach { put(noteToJson(it)) } }.toString()
+            else noteToJson(notes.single()).toString()
+        val entries = linkedMapOf(
+            META_JSON to """{"format":"noteapp","type":"${if (full) "full" else "single"}","version":2}""".toByteArray(),
+            (if (full) NOTES_JSON else NOTE_JSON) to manifest.toByteArray(Charsets.UTF_8),
+            INDEX_JSON to index.toString().toByteArray(Charsets.UTF_8)
+        )
+        normalized.entries.forEachIndexed { i, entry -> entries["blobs/$i"] = entry.value }
+        require(entries.size <= MAX_ENTRIES && entries.values.all { it.size <= MAX_ENTRY_BYTES }) { "Package too large" }
+        require(entries.values.sumOf { it.size.toLong() } <= MAX_TOTAL_BYTES) { "Package too large" }
         GZIPOutputStream(out).use { gz ->
-            Tar.write(gz, META_JSON, """{"format":"noteapp","type":"single","version":1}""".toByteArray())
-            Tar.write(gz, NOTE_JSON, noteToJson(note).toString().toByteArray())
-            for ((name, bytes) in attachments) Tar.write(gz, "attachments/$name", bytes)
+            entries.forEach { (key, value) -> Tar.write(gz, key, value) }
             Tar.finish(gz)
         }
     }
 
-    fun writeFull(out: OutputStream, notes: List<PackedNote>, attachments: Map<String, ByteArray>) {
-        GZIPOutputStream(out).use { gz ->
-            Tar.write(gz, META_JSON, """{"format":"noteapp","type":"full","version":1}""".toByteArray())
-            val arr = JSONArray()
-            notes.forEach { arr.put(noteToJson(it)) }
-            Tar.write(gz, NOTES_JSON, arr.toString().toByteArray())
-            for ((name, bytes) in attachments) Tar.write(gz, "attachments/$name", bytes)
-            Tar.finish(gz)
+    fun read(input: InputStream): PackageData = try {
+        val entries = GZIPInputStream(input).use {
+            Tar.read(it, MAX_ENTRIES, MAX_ENTRY_BYTES, MAX_TOTAL_BYTES)
         }
-    }
-
-    fun read(input: InputStream): PackageData {
-        val entries = try {
-            // ★ 限额守卫：超限直接判为无效包，不尝试解压（避免 OOM）
-            Tar.read(
-                GZIPInputStream(input),
-                maxEntries = MAX_ENTRIES,
-                maxEntryBytes = MAX_ENTRY_BYTES,
-                maxTotalBytes = MAX_TOTAL_BYTES
-            )
-        } catch (e: Exception) {
-            return PackageData.Invalid
+        val meta = JSONObject(String(entries[META_JSON] ?: error("Missing meta"), Charsets.UTF_8))
+        require(meta.getString("format") == "noteapp")
+        val version = meta.get("version")
+        require(version is Number && (version.toString() == "1" || version.toString() == "2")) { "Unknown version" }
+        val full = when (meta.getString("type")) {
+            "single" -> false
+            "full" -> true
+            else -> error("Unknown package type")
         }
-        // ★ 所有条目名必须先通过安全检查（阻断路径穿越）
-        for (name in entries.keys) {
-            if (sanitizeEntryName(name) == null) return PackageData.Invalid
-        }
-        val meta = entries[META_JSON]?.toString(Charsets.UTF_8)?.let { runCatching { JSONObject(it) }.getOrNull() }
-            ?: return PackageData.Invalid
-        if (meta.optString("format") != "noteapp") return PackageData.Invalid
+        val manifest = String(entries[if (full) NOTES_JSON else NOTE_JSON] ?: error("Missing notes"), Charsets.UTF_8)
+        val notes = if (full) {
+            val arr = JSONArray(manifest)
+            (0 until arr.length()).map { noteFromJson(arr.getJSONObject(it)) }
+        } else listOf(noteFromJson(JSONObject(manifest)))
         val attachments = LinkedHashMap<String, ByteArray>()
-        for ((name, bytes) in entries) {
-            if (!name.startsWith("attachments/")) continue
-            val rel = name.removePrefix("attachments/")
-            // 双重校验：相对名同样不得含路径段或非法字符
-            if (sanitizeEntryName(rel) == null) return PackageData.Invalid
-            attachments[rel] = bytes
-        }
-        return when (meta.optString("type")) {
-            "single" -> {
-                val n = entries[NOTE_JSON]?.let { runCatching { noteFromJson(JSONObject(String(it, Charsets.UTF_8))) }.getOrNull() } ?: return PackageData.Invalid
-                PackageData.Single(n, attachments)
+        val expected = mutableSetOf(META_JSON, if (full) NOTES_JSON else NOTE_JSON)
+        if (version.toInt() == 1) {
+            for ((name, bytes) in entries) {
+                if (name in expected) continue
+                require(name.startsWith("attachments/")) { "Unexpected entry" }
+                val basename = AttachmentNames.requireSafe(name.removePrefix("attachments/"))
+                attachments[basename] = bytes
+                expected.add(name)
             }
-            "full" -> {
-                val arr = entries[NOTES_JSON]?.let { runCatching { JSONArray(String(it, Charsets.UTF_8)) }.getOrNull() }
-                    ?: return PackageData.Invalid
-                val notes = mutableListOf<PackedNote>()
-                for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { notes.add(noteFromJson(it)) }
-                PackageData.Full(notes, attachments)
+        } else {
+            expected.add(INDEX_JSON)
+            val index = JSONObject(String(entries[INDEX_JSON] ?: error("Missing attachment index"), Charsets.UTF_8))
+            val used = mutableSetOf<String>()
+            for (key in index.keys()) {
+                AttachmentNames.requireKey(key)
+                val blob = index.getString(key)
+                require(blob.matches(Regex("blobs/[0-9]+")) && used.add(blob)) { "Invalid blob key" }
+                attachments[key] = entries[blob] ?: error("Missing blob")
+                expected.add(blob)
             }
-            else -> PackageData.Invalid
         }
+        require(entries.keys == expected) { "Unexpected entries" }
+        for (note in notes) for (block in note.blocks) {
+            val key = AttachmentNames.key(block) ?: continue
+            // v2 must never fall back into the untyped v1 namespace.
+            require(attachments.containsKey(if (version.toInt() == 1) key.substringAfter('/') else key)) { "Missing attachment" }
+        }
+        if (full) PackageData.Full(notes, attachments) else PackageData.Single(notes.single(), attachments)
+    } catch (_: Exception) {
+        PackageData.Invalid
     }
 
     private fun noteToJson(n: PackedNote): JSONObject = JSONObject().apply {
@@ -143,19 +149,30 @@ object NotePackage {
         put("repeatRule", n.repeatRule ?: JSONObject.NULL)
     }
 
-    private fun noteFromJson(o: JSONObject): PackedNote = PackedNote(
-        title = o.optString("title"),
-        blocks = BlockSerializer.fromJson(o.optString("blocks")),
-        labels = (o.optJSONArray("labels")?.let { arr ->
-            (0 until arr.length()).mapNotNull { i -> arr.optString(i) }
-        } ?: emptyList()),
-        createdAt = o.optLong("createdAt"),
-        modifiedAt = o.optLong("modifiedAt"),
-        lastOpenedAt = o.optLong("lastOpenedAt"),
-        pinned = o.optBoolean("pinned"),
-        reminderAt = if (o.isNull("reminderAt")) null else o.optLong("reminderAt"),
-        repeatRule = if (o.isNull("repeatRule")) null else o.optString("repeatRule")
-    )
+    private fun noteFromJson(o: JSONObject): PackedNote {
+        // Do not use the deliberately lenient database decoder for untrusted packages.
+        val array = JSONArray(o.getString("blocks"))
+        val blocks = (0 until array.length()).map { i ->
+            val block = array.getJSONObject(i)
+            when (block.getString("type")) {
+                "text" -> Block.Text(block.getString("html"))
+                "image" -> Block.Image(AttachmentNames.requireSafe(block.getString("path")))
+                "audio" -> Block.Audio(AttachmentNames.requireSafe(block.getString("path")))
+                "file" -> Block.File(AttachmentNames.requireSafe(block.getString("path")))
+                else -> error("Unknown block type")
+            }
+        }
+        val labels = o.getJSONArray("labels")
+        return PackedNote(
+            title = o.getString("title"), blocks = blocks,
+            labels = (0 until labels.length()).map { labels.getString(it) },
+            createdAt = o.getLong("createdAt"), modifiedAt = o.getLong("modifiedAt"),
+            lastOpenedAt = o.getLong("lastOpenedAt"), pinned = o.getBoolean("pinned"),
+            reminderAt = if (o.isNull("reminderAt")) null else o.getLong("reminderAt"),
+            repeatRule = if (o.isNull("repeatRule")) null else o.getString("repeatRule")
+        )
+    }
+
 }
 
 /** 极简 tar 写入/读取（512 字节头 + 8 进制字段）。 */
@@ -164,7 +181,8 @@ private object Tar {
     fun write(out: OutputStream, name: String, data: ByteArray) {
         val h = ByteArray(512)
         val nb = name.toByteArray(Charsets.UTF_8)
-        System.arraycopy(nb, 0, h, 0, minOf(nb.size, 100))
+        require(nb.size <= 100) { "Tar name exceeds 100 UTF-8 bytes" }
+        System.arraycopy(nb, 0, h, 0, nb.size)
         "0000644\u0000".toByteArray().copyInto(h, 100)
         "0000000\u0000".toByteArray().copyInto(h, 108)
         "0000000\u0000".toByteArray().copyInto(h, 116)
@@ -205,41 +223,53 @@ private object Tar {
     ): Map<String, ByteArray> {
         val entries = LinkedHashMap<String, ByteArray>()
         var total = 0L
-        val header = ByteArray(512)
-        while (true) {
-            if (entries.size > maxEntries) throw IllegalStateException("条目数超限")
+        var count = 0
+        fun exact(size: Int): ByteArray {
+            val data = ByteArray(size)
             var off = 0
-            while (off < 512) {
-                val r = input.read(header, off, 512 - off)
-                if (r < 0) return entries
-                off += r
+            while (off < size) {
+                val n = input.read(data, off, size - off)
+                check(n > 0) { "Truncated tar" }
+                off += n
             }
-            if (header.all { it == 0.toByte() }) return entries
-            val name = String(header, 0, 100, Charsets.UTF_8).trimEnd('\u0000')
-            var size = 0L
-            for (i in 124 until 136) {
-                val c = header[i].toInt().toChar()
-                if (c in '0'..'7') size = size * 8 + (c - '0')
+            return data
+        }
+        fun octal(h: ByteArray, offset: Int, length: Int): Long {
+            val text = String(h, offset, length, Charsets.US_ASCII).trim(' ', '\u0000')
+            require(text.isNotEmpty() && text.all { it in '0'..'7' }) { "Invalid octal field" }
+            return text.toLong(8)
+        }
+        while (true) {
+            val header = exact(512)
+            if (header.all { it == 0.toByte() }) {
+                require(exact(512).all { it == 0.toByte() }) { "Missing tar terminator" }
+                // Drain gzip to validate its CRC/trailer, allowing only conventional zero tar padding.
+                var padding = 0
+                while (true) {
+                    val value = input.read()
+                    if (value == -1) break
+                    require(value == 0 && ++padding <= 1024 * 1024) { "Trailing tar data" }
+                }
+                return entries
             }
-            if (size < 0 || size > maxEntryBytes) throw IllegalStateException("条目过大")
+            require(++count <= maxEntries) { "Too many entries" }
+            val checksum = octal(header, 148, 8)
+            val sum = header.indices.sumOf { if (it in 148..155) 32 else header[it].toInt() and 255 }
+            require(checksum == sum.toLong()) { "Invalid tar checksum" }
+            require(header[156] == '0'.code.toByte() || header[156] == 0.toByte()) { "Not a regular file" }
+            require((157 until 257).all { header[it] == 0.toByte() }) { "Unexpected tar link" }
+            require((345 until 500).all { header[it] == 0.toByte() }) { "Unsupported tar prefix" }
+            val end = (0 until 100).firstOrNull { header[it] == 0.toByte() } ?: 100
+            require((end until 100).all { header[it] == 0.toByte() }) { "Invalid tar name" }
+            val decoder = Charsets.UTF_8.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            val name = decoder.decode(java.nio.ByteBuffer.wrap(header, 0, end)).toString()
+            require(name.isNotBlank() && !entries.containsKey(name)) { "Empty or duplicate entry" }
+            val size = octal(header, 124, 12)
+            require(size <= maxEntryBytes && size <= Int.MAX_VALUE && size <= maxTotalBytes - total) { "Package too large" }
             total += size
-            if (total > maxTotalBytes) throw IllegalStateException("整包过大")
-            if (size > Int.MAX_VALUE) throw IllegalStateException("条目超出可寻址范围")
-            val data = ByteArray(size.toInt())
-            var dOff = 0
-            while (dOff < data.size) {
-                val r = input.read(data, dOff, data.size - dOff)
-                if (r < 0) return entries
-                dOff += r
-            }
-            if (name.isNotBlank()) entries[name] = data
-            val pad = (512 - (data.size % 512)) % 512
-            var pOff = 0
-            while (pOff < pad) {
-                val r = input.read(ByteArray(pad - pOff))
-                if (r < 0) return entries
-                pOff += r
-            }
+            entries[name] = exact(size.toInt())
+            val pad = ((512 - size % 512) % 512).toInt()
+            require(exact(pad).all { it == 0.toByte() }) { "Invalid tar padding" }
         }
     }
 }

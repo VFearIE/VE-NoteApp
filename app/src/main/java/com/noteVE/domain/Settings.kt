@@ -19,6 +19,10 @@ object Settings {
     const val SORT_LAST_OPENED = "lastOpened"
 
     private lateinit var prefs: SharedPreferences
+    private val _reminderMuted = MutableStateFlow(false)
+    private val _reminderVibrationEnabled = MutableStateFlow(true)
+    val reminderMuted: StateFlow<Boolean> = _reminderMuted
+    val reminderVibrationEnabled: StateFlow<Boolean> = _reminderVibrationEnabled
     private val _theme = MutableStateFlow(THEME_SYSTEM)
     private val _language = MutableStateFlow(LANG_SYSTEM)
     private val _sortBy = MutableStateFlow(SORT_NAME)
@@ -40,6 +44,8 @@ object Settings {
 
     fun init(context: Context) {
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        _reminderMuted.value = prefs.getBoolean("reminderMuted", false)
+        _reminderVibrationEnabled.value = prefs.getBoolean("reminderVibrationEnabled", true)
         _theme.value = prefs.getString("theme", THEME_SYSTEM) ?: THEME_SYSTEM
         _language.value = prefs.getString("language", LANG_SYSTEM) ?: LANG_SYSTEM
         _sortBy.value = prefs.getString("sortBy", SORT_NAME) ?: SORT_NAME
@@ -61,6 +67,16 @@ object Settings {
     fun setDynamicColor(v: Boolean) {
         _dynamicColor.value = v
         prefs.edit().putBoolean("dynamicColor", v).apply()
+    }
+
+    fun setReminderMuted(v: Boolean) {
+        prefs.edit().putBoolean("reminderMuted", v).apply()
+        _reminderMuted.value = v
+    }
+
+    fun setReminderVibrationEnabled(v: Boolean) {
+        prefs.edit().putBoolean("reminderVibrationEnabled", v).apply()
+        _reminderVibrationEnabled.value = v
     }
 
     val currentLanguage: String get() = _language.value

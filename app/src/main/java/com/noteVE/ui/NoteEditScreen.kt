@@ -1,5 +1,14 @@
 package com.noteVE.ui
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+
+import androidx.compose.ui.draw.clipToBounds
+
+import androidx.compose.foundation.layout.isImeVisible
+
 import android.app.Application
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -68,6 +77,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -118,6 +128,14 @@ import java.util.Calendar
 fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
     val app = LocalContext.current.applicationContext as Application
     val vm: NoteEditViewModel = viewModel(factory = viewModelFactory { initializer { NoteEditViewModel(app, noteId) } })
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, vm) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) vm.flush()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val loaded by vm.loaded.collectAsState()
     val title by vm.title.collectAsState()
     val blocks by vm.blocks.collectAsState()
@@ -235,7 +253,7 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { u ->
+        uri?.takeIf { !readOnly }?.let { u ->
             scope.launch {
                 val name = vm.importImage(u)
                 insertAtCursor(Block.Image(name))
@@ -260,27 +278,37 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
         }
     }
 
-    val resultReceiver = remember {
-        object : ResultReceiver(Handler(Looper.getMainLooper())) {
-            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
-                Toast.makeText(context, resultData?.getString(BackupService.EXTRA_MSG) ?: "", Toast.LENGTH_SHORT).show()
+    val backupProgress: BackupProgressState = viewModel()
+    var pendingExportId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri == null) {
+            backupProgress.dismiss() // Cancelling the picker is not a failed backup.
+        } else {
+            val id = pendingExportId
+            if (id == null) backupProgress.fail()
+            else backupProgress.start(context) { receiver ->
+                startExport(context, BackupService.ACTION_EXPORT_SINGLE, uri, receiver, id)
             }
         }
     }
-    var pendingExportId by remember { mutableStateOf<Long?>(null) }
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        uri?.let { u -> pendingExportId?.let { id -> startExport(context, BackupService.ACTION_EXPORT_SINGLE, u, resultReceiver, id) } }
-    }
     fun exportNote() {
+        backupProgress.prepare()
         scope.launch {
-            val id = vm.save()
-            pendingExportId = id
-            exportLauncher.launch("note_$id.noteapp")
+            try {
+                val id = vm.save()
+                pendingExportId = id
+                exportLauncher.launch("note_$id.noteapp")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                backupProgress.fail()
+            }
         }
     }
+    BackupProgressDialog(backupProgress)
 
     BackHandler {
-        scope.launch { vm.save(); onBack() }
+        if (!loaded) onBack() else scope.launch { vm.save(); onBack() }
     }
 
     if (!loaded) {
@@ -305,7 +333,7 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                 actions = {
                     // 折叠状态下：在闹钟左边显示「展开工具栏」按钮（向下箭头）
                     AnimatedVisibility(
-                        visible = imeVisible && toolbarCollapsed,
+                        visible = imeVisible && toolbarCollapsed && !readOnly,
                         enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.7f),
                         exit = fadeOut(tween(150)) + scaleOut(tween(150), targetScale = 0.7f)
                     ) {
@@ -317,31 +345,16 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                             )
                         }
                     }
-                    IconButton(onClick = { showReminder = true }) { Icon(painterResource(R.drawable.ic_editor_reminder), stringResource(R.string.reminder_item)) }
-                    // 只读开关（图标带切换动画）
-                    IconButton(onClick = {
-                        vm.toggleReadOnly()
-                        toast(context, if (readOnly) R.string.readonly_off else R.string.readonly_on)
-                    }) {
-                        Crossfade(
-                            targetState = readOnly,
-                            animationSpec = tween(220),
-                            label = "eyeToggle"
-                        ) { ro ->
-                            Icon(
-                                painterResource(
-                                    if (ro) R.drawable.ic_eye_open else R.drawable.ic_eye_closed
-                                ),
-                                stringResource(R.string.readonly_toggle),
-                                tint = if (ro) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    IconButton(onClick = { if (!readOnly) showReminder = true }) { Icon(painterResource(R.drawable.ic_editor_reminder), stringResource(R.string.reminder_item)) }
                     IconButton(onClick = {
                         if (readOnly) toast(context, R.string.readonly_blocked)
                         else { captureAnchor(); insertOpen = true }
                     }) { Icon(painterResource(R.drawable.ic_action_add), stringResource(R.string.insert)) }
+                    // 只读状态常驻顶栏：图标以轻微弹性缩放/颜色切换反馈，不收进更多菜单。
+                    ReadOnlyToggle(readOnly = readOnly, onClick = {
+                        vm.toggleReadOnly()
+                        toast(context, if (!readOnly) R.string.readonly_on else R.string.readonly_off)
+                    })
                     DropdownMenu(expanded = insertOpen, onDismissRequest = { insertOpen = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.add_image)) }, onClick = {
                             insertOpen = false
@@ -358,42 +371,34 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(text = { Text(stringResource(if (pinned) R.string.unpin else R.string.pin)) }, onClick = { vm.updatePinned(!pinned); menuOpen = false })
                         DropdownMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { menuOpen = false; exportNote() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; confirmDelete = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }, onClick = { menuOpen = false; if (!readOnly) confirmDelete = true })
                     }
                 }
             )
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            // 工具栏用动画展开/收起（此前是瞬间插入，会顶动正文造成「画面飞出」）
-            // ★ expandVertically 的默认 expandFrom = Alignment.Bottom，
-            //   会让内容在展开动画期间先出现在容器【上方】（即屏幕外）→ 表现为「飞出屏幕点不到」。
-            //   必须显式指定 Top，让工具栏从顶部向下生长。
+        Column(Modifier.fillMaxSize().padding(padding).clipToBounds()) {
             AnimatedVisibility(
-                visible = imeVisible && !toolbarCollapsed,
-                enter = expandVertically(
-                    animationSpec = tween(220), expandFrom = Alignment.Top
-                ) + fadeIn(tween(220)),
-                exit = shrinkVertically(
-                    animationSpec = tween(180), shrinkTowards = Alignment.Top
-                ) + fadeOut(tween(180))
-            ) {
-                FormattingToolbar(
-                    onUnderline = { format { RichTextActions.toggleUnderline(it) } },
-                    onStrike = { format { RichTextActions.toggleStrike(it) } },
-                    onBullet = { format { RichTextActions.toggleBullet(it) } },
-                    onColor = { freezeSelection(); showColor = true },
-                    onCollapse = { toolbarCollapsed = true }
-                )
-            }
+                    visible = imeVisible && !toolbarCollapsed && !readOnly,
+                    enter = expandVertically(tween(200, easing = Motion.Emphasized), expandFrom = Alignment.Top) + fadeIn(tween(180)) +
+                        androidx.compose.animation.scaleIn(tween(200, easing = Motion.Emphasized), initialScale = 0.96f),
+                    exit = shrinkVertically(tween(170, easing = Motion.Emphasized), shrinkTowards = Alignment.Top) + fadeOut(tween(120)) +
+                        androidx.compose.animation.scaleOut(tween(170), targetScale = 0.96f)
+                ) {
+                    FormattingToolbar(
+                        onUnderline = { format { RichTextActions.toggleUnderline(it) } },
+                        onStrike = { format { RichTextActions.toggleStrike(it) } },
+                        onBullet = { format { RichTextActions.toggleBullet(it) } },
+                        onColor = { freezeSelection(); showColor = true },
+                        onCollapse = { toolbarCollapsed = true }
+                    )
+                }
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 // 末个文字块至少撑满剩余视口：否则下方空白不属于任何 EditText，点击无响应、无光标。
                 // ★用「历史最大高度」而非当前高度：输入法弹出会令 maxHeight 变小，
                 //   若跟着变小会导致内容重排 + 滚动位置跳变（就是「画面飞出」）。
                 val rawMin = (maxHeight - 108.dp).coerceAtLeast(120.dp)
-                var stableMin by remember { mutableStateOf(rawMin) }
-                if (rawMin > stableMin) stableMin = rawMin
-                val bodyMin = stableMin
+                val bodyMin = rawMin
                 Column(Modifier.fillMaxSize().verticalScroll(contentScroll)) {
                     BasicTextField(
                         value = title,
@@ -401,17 +406,19 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                         // ★ 必须显式指定 color：BasicTextField 的 textStyle 不指定时
                         //   不会跟随 MaterialTheme 的 onSurface，深色下仍是黑字。
                         textStyle = TextStyle(
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.sp,
                             color = MaterialTheme.colorScheme.onSurface
                         ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        readOnly = readOnly,
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) focusedEditText = null }.padding(horizontal = 16.dp, vertical = 8.dp),
                         decorationBox = { inner ->
                             Box {
                                 if (title.isEmpty()) {
-                                    Text(stringResource(R.string.title_hint), style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)))
+                                    Text(stringResource(R.string.title_hint), style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)))
                                 }
                                 inner()
                             }
@@ -419,9 +426,9 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
                     )
                     // 标题与正文的分界线（跟随深浅色主题）
                     HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant
+                        modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp).width(28.dp),
+                        thickness = 2.dp,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
                     )
                     blocks.forEachIndexed { index, block ->
                         when (block) {
@@ -523,8 +530,7 @@ fun NoteEditScreen(noteId: Long?, onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    vm.delete()
-                    scope.launch { onBack() }
+                    scope.launch { vm.delete(); onBack() }
                 }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } }
@@ -545,7 +551,7 @@ private fun FormattingToolbar(
             .height(56.dp)
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(MaterialTheme.shapes.extraLarge)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
             // ★ 容器不可获取焦点：否则点击格式图标会把焦点从编辑框抢走
             //   → 输入法收起 → 工具栏随 imeVisible 变化而闪退
@@ -564,19 +570,20 @@ private fun FormattingToolbar(
             ToolbarIcon(R.drawable.ic_editor_color, R.string.text_color, onColor)
         }
         // 右侧：固定「折叠」按钮（向上箭头），不随图标滚动
-        ToolbarIcon(R.drawable.ic_chevron_up, R.string.collapse_toolbar, onCollapse)
+        Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)))
+        ToolbarIcon(R.drawable.ic_chevron_up, R.string.collapse_toolbar, onCollapse, tint = MaterialTheme.colorScheme.primary)
     }
 }
 
 @Composable
-private fun ToolbarIcon(iconRes: Int, descRes: Int, onClick: () -> Unit) {
+private fun ToolbarIcon(iconRes: Int, descRes: Int, onClick: () -> Unit, tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface) {
     // 触控区 >=48dp，图标 22dp
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+    IconButton(onClick = onClick, modifier = Modifier.size(48.dp).focusProperties { canFocus = false }) {
         Icon(
             painterResource(iconRes),
             stringResource(descRes),
             modifier = Modifier.size(22.dp),
-            tint = MaterialTheme.colorScheme.onSurface
+            tint = tint
         )
     }
 }
@@ -704,30 +711,60 @@ private fun startExport(context: Context, action: String, uri: Uri, receiver: Re
     ContextCompat.startForegroundService(context, intent)
 }
 
-/** 可靠的输入法可见性检测（基于窗口可视区域 vs 根视图高度）。 */
+/** Window insets are independent of screen dimensions and multi-window size. */
 @Composable
-private fun rememberImeVisible(): Boolean {
-    val view = LocalView.current
-    val imeVisible = remember { mutableStateOf(false) }
-    DisposableEffect(view) {
-        val listener = ViewTreeObserver.OnGlobalLayoutListener {
-            val r = Rect()
-            view.getWindowVisibleDisplayFrame(r)
-            // ★ 必须用 displayMetrics.heightPixels（屏幕物理高，稳定）
-            //   而不是 view.rootView.height —— 后者在 adjustResize 下会随输入法一起缩小，
-            //   算出 insets≈0 → imeVisible 反复翻转 → 工具栏 enter/exit 动画来回播放
-            //   （表现为「工具栏往上飞/闪烁」）。
-            val screenHeight = view.resources.displayMetrics.heightPixels
-            val bottomInset = screenHeight - r.bottom
-            imeVisible.value = bottomInset > screenHeight * 0.15
-        }
-        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
-    }
-    return imeVisible.value
-}
+@OptIn(ExperimentalLayoutApi::class)
+private fun rememberImeVisible(): Boolean = androidx.compose.foundation.layout.WindowInsets.isImeVisible
 
 /** 轻量 Toast。 */
 private fun toast(context: android.content.Context, resId: Int) {
     Toast.makeText(context, resId, Toast.LENGTH_SHORT).show()
+}
+
+
+/**
+ * 只读开关：常驻顶栏。切换时图标 spring 回弹 + 小幅旋转，背后胶囊以主色淡底出现；
+ * 全部在 graphicsLayer / drawBehind 中完成，不引起顶栏重测。
+ */
+@Composable
+private fun ReadOnlyToggle(readOnly: Boolean, onClick: () -> Unit) {
+    val bounce = remember { androidx.compose.animation.core.Animatable(1f) }
+    var first by remember { mutableStateOf(true) }
+    LaunchedEffect(readOnly) {
+        if (first) { first = false; return@LaunchedEffect }
+        bounce.snapTo(0.72f)
+        bounce.animateTo(1f, Motion.bouncy())
+    }
+    val bgAlpha by androidx.compose.animation.core.animateFloatAsState(if (readOnly) 1f else 0f, tween(220), label = "roBg")
+    val tint by androidx.compose.animation.animateColorAsState(
+        if (readOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        tween(220), label = "roTint"
+    )
+    val pill = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.drawBehind {
+            if (bgAlpha > 0f) {
+                val h = 34.dp.toPx(); val w = 40.dp.toPx() * (0.7f + 0.3f * bgAlpha)
+                drawRoundRect(
+                    color = pill.copy(alpha = pill.alpha * bgAlpha),
+                    topLeft = androidx.compose.ui.geometry.Offset((size.width - w) / 2, (size.height - h) / 2),
+                    size = androidx.compose.ui.geometry.Size(w, h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2)
+                )
+            }
+        }
+    ) {
+        Crossfade(targetState = readOnly, animationSpec = tween(160), label = "readOnlyToggle") { ro ->
+            Icon(
+                painterResource(if (ro) R.drawable.ic_eye_open else R.drawable.ic_eye_closed),
+                stringResource(R.string.readonly_toggle),
+                tint = tint,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = bounce.value; scaleY = bounce.value
+                    rotationZ = (1f - bounce.value) * if (ro) -40f else 40f
+                }
+            )
+        }
+    }
 }

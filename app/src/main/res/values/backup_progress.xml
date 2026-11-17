@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_progress_preparing">Preparing</string>
+    <string name="backup_progress_running">Importing / exporting</string>
+    <string name="backup_progress_success">Completed</string>
+    <string name="backup_progress_failure">Could not complete</string>
+    <string name="backup_progress_preparing_detail">Preparing your import or export…</string>
+    <string name="backup_progress_running_detail">Processing your notes and attachments. Please wait…</string>
+    <string name="backup_progress_success_detail">The operation completed successfully.</string>
+    <string name="backup_progress_failure_detail">The import or export could not be completed. Check the selected file, available storage and access permissions, then try again.</string>
+</resources>

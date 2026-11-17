@@ -1,346 +1,400 @@
 package com.noteVE.reminder
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import com.noteVE.MainActivity
+import androidx.core.content.ContextCompat
 import com.noteVE.R
-import com.noteVE.domain.NoteRepository
+import com.noteVE.domain.RepeatRule
+import com.noteVE.domain.Settings
+import com.noteVE.domain.Permissions
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
-/**
- * 提醒前台服务：停驻通知 + 持续震动。
- *
- * ## 谁启动它
- * - **主路径**：AlarmManager 的 `PendingIntent.getForegroundService`（系统作发起方，
- *   不受 Android 9「后台不能启动前台服务」限制）
- * - 冗余：[ReminderTicker] 进程内到点调用
- * - 低版本：[ReminderTrigger] 广播中转
- *
- * ## ★ 多提醒隔离（v2.1.0 重构要点）
- *
- * 旧实现用单一全局态（`activeNoteId` / `activeTitle` / 固定 `NOTIF_ID`），
- * 当提醒 A、B 接近同时触发时会出现：
- * - B 覆盖 A 的通知（同一 NOTIF_ID）
- * - B 覆盖 A 的身份（`activeNoteId` 被改写）
- * - A 完成时误把 B 判为完成（甚至 `stopService` 直接把 B 也杀掉）
- *
- * 现改为**按 noteId 隔离**：
- * - 每条提醒独立登记在 [actives]（`noteId → title`）
- * - 每条提醒有**稳定且唯一**的通知 ID（[ongoingIdFor] / [doneIdFor]）
- * - A 完成只影响 A；仅当**所有**提醒都结束才停服务
- * - 前台槽位（`startForeground`）只能有一个：首条占据，其余走普通 `notify()`
- *   （同为 `setOngoing(true)`，用户同样划不掉）；前台主完成时自动把下一条升为前台
- * - 上下文全部来自 Intent 的 `noteId` + 数据库查询，**不依赖进程内残留状态**，
- *   故服务被系统重建后仍能正确恢复
- *
- * ## 提醒生命周期
- * 触发 → 停驻通知 + 震动 → 完成条件：
- *   ① 用户点击该条通知进入笔记 → 只完成**该条**
- *   ② 息屏持续超过 [SCREEN_OFF_GRACE_MS] → 完成**全部**（用户已离开）
- *   ③ 解锁设备 → 完成**全部**（用户已回来）
- * → 该条转为「已完成」可划走通知；全部完成则停服务、停震动
- */
+/** One actor owns journal, notification slot, audio and all occurrence transitions. */
 class ReminderService : Service() {
-
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private data class Command(val intent: Intent?, val startId: Int)
+    private val commands = Channel<Command>(Channel.UNLIMITED)
+    private lateinit var store: OccurrenceStore
+    private lateinit var sound: ReminderSound
+    private val rows = mutableListOf<Occurrence>()
+    private var loaded = false
+    private var foregroundId = 0
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var commandWakeLock: PowerManager.WakeLock? = null
+    private var latestStartId = 0
     private val handler = Handler(Looper.getMainLooper())
-    private val graceRunnable = Runnable {
-        if (actives.isNotEmpty()) {
-            log("息屏超过宽限期 → 完成全部提醒（${actives.size} 条）")
-            completeAll(this)
+    private val audioTimeout = Runnable { commands.trySend(Command(Intent(ACTION_MUTE_ALL), 0)) }
+    private var audible = false // Session deadline is independent of preference toggles.
+    private var soundActive = false
+    private var vibrationActive = false
+    private val manager get() = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            // Ordinary apps cannot intercept KEYCODE_POWER globally. SCREEN_OFF is only silence.
+            if (intent.action == Intent.ACTION_SCREEN_OFF) commands.trySend(Command(Intent(ACTION_MUTE_ALL), 0))
         }
     }
 
-    private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> {
-                    handler.removeCallbacks(graceRunnable)
-                    handler.postDelayed(graceRunnable, SCREEN_OFF_GRACE_MS)
-                    log("息屏，启动 ${SCREEN_OFF_GRACE_MS}ms 宽限计时")
-                }
-                Intent.ACTION_SCREEN_ON -> {
-                    handler.removeCallbacks(graceRunnable)
-                    log("亮屏，取消完成判定")
-                }
-                Intent.ACTION_USER_PRESENT -> {
-                    handler.removeCallbacks(graceRunnable)
-                    if (actives.isNotEmpty()) {
-                        log("解锁 → 完成全部提醒（${actives.size} 条）")
-                        completeAll(context)
+    override fun onCreate() {
+        super.onCreate()
+        store = OccurrenceStore(this)
+        sound = ReminderSound(this)
+        NotificationHelper.createChannels(this)
+        ContextCompat.registerReceiver(this, screenReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF), ContextCompat.RECEIVER_NOT_EXPORTED)
+        scope.launch {
+            for (command in commands) {
+                try {
+                    acquireCommandWakeLock()
+                    if (!loaded) restore()
+                    execute(command.intent)
+                    render()
+                    if (rows.isEmpty() && commands.isEmpty) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        foregroundId = 0
+                        stopSelfResult(latestStartId)
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Reminder command failed; journal retained", e)
+                    sound.stop(); ReminderVibrator.stop(); releaseWakeLock()
+                    audible = false
+                    soundActive = false
+                    vibrationActive = false
+                    handler.removeCallbacks(audioTimeout)
+                    // In-memory transitions may not have committed. Reload the journal on retry.
+                    loaded = false
+                    presentationState.value = Presentation(false, emptyList())
+                    state.value = emptyList()
+                    if (rows.isEmpty()) { stopForeground(STOP_FOREGROUND_REMOVE); foregroundId = 0; stopSelfResult(latestStartId) }
+                } finally {
+                    commandWakeLock?.let { if (it.isHeld) runCatching { it.release() } }
+                    commandWakeLock = null
                 }
             }
+        }
+        scope.launch {
+            combine(Settings.reminderMuted, Settings.reminderVibrationEnabled) { _, _ -> Unit }
+                .collect {
+                    // Only the actor touches rows/effects; never start an idle service for settings.
+                    if (loaded) commands.trySend(Command(Intent(ACTION_PREFERENCES), 0))
+                }
         }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val noteId = intent?.getLongExtra(EXTRA_NOTE_ID, -1L) ?: -1L
-        log("onStartCommand noteId=$noteId startId=$startId 活跃=${actives.size}")
-        if (noteId <= 0) {
-            if (actives.isEmpty()) stopSelf(startId)
-            return START_NOT_STICKY
-        }
-
-        // 去重：同一条已在提醒中（AlarmManager 与进程内计时器可能同时触发）。
-        // ★ 不能 stopSelf()（会停掉前台服务，致通知降级、震动中断），直接返回即可。
-        if (actives.containsKey(noteId)) {
-            log("重复触发，忽略 noteId=$noteId")
-            return START_NOT_STICKY
-        }
-
-        // 登记这条提醒
-        actives[noteId] = ""
-
-        // 通知策略：第一条占据前台槽位，其余走普通 notify（同为 ongoing，划不掉）
-        val notifId = ongoingIdFor(noteId)
-        if (foregroundNoteId == 0L) {
+        latestStartId = startId
+        // Must satisfy FGS deadline synchronously, before Room/journal I/O. No feedback yet.
+        if (foregroundId == 0) {
             try {
-                startForeground(notifId, buildOngoingNotification(this, noteId, ""))
-                foregroundNoteId = noteId
-                log("startForeground OK noteId=$noteId id=$notifId")
-            } catch (t: Throwable) {
-                log("!! startForeground 失败: $t")
-                actives.remove(noteId)
-                if (actives.isEmpty()) stopSelf(startId)
+                startForeground(BOOTSTRAP_ID, NotificationCompat.Builder(this, NotificationHelper.CHANNEL_SERVICE)
+                    .setSmallIcon(R.drawable.ic_notification).setContentTitle(getString(R.string.rv3_loading))
+                    .setOngoing(true).setSilent(true).build())
+                foregroundId = BOOTSTRAP_ID
+            } catch (e: Exception) {
+                Log.e(TAG, "Foreground promotion denied", e)
+                stopSelf(startId)
                 return START_NOT_STICKY
             }
-        } else {
-            runCatching {
-                NotificationManagerCompat.from(this)
-                    .notify(notifId, buildOngoingNotification(this, noteId, ""))
-            }
-            log("附加通知 noteId=$noteId id=$notifId（前台槽位归 $foregroundNoteId）")
         }
+        commands.trySend(Command(intent, startId))
+        return START_STICKY
+    }
 
-        // 持续震动（多条提醒共用一路震动，只要还有活跃提醒就继续）
-        ReminderVibrator.start(this)
-        log("震动已启动")
-
-        // 监听息屏/亮屏/解锁（重复注册是幂等的）
-        if (!receiverRegistered) {
-            val f = IntentFilter().apply {
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
+    private suspend fun restore() {
+        rows.clear()
+        rows.addAll(store.load())
+        for (row in rows.toList()) {
+            if (store.consumed(row.noteId, row.expectedAt) || store.note(row.noteId) == null) {
+                rows.remove(row); manager.cancel(row.notificationId); continue
             }
-            runCatching { registerReceiver(screenReceiver, f) }
-            receiverRegistered = true
+            if (row.phase == Occurrence.CLAIMED) {
+                if (!store.advance(row)) { store.markConsumed(row); rows.remove(row); continue }
+                replace(row.copy(phase = Occurrence.RINGING))
+            }
+            // A second repeat may already have advanced Room. Never re-register an older nextAt.
+            val currentAt = store.note(row.noteId)?.reminderAt
+            if (currentAt != null && currentAt > System.currentTimeMillis()) {
+                ReminderScheduler(this).schedule(row.noteId, currentAt)
+            }
+            if (row.phase == Occurrence.SNOOZED) {
+                if (row.resumeAt <= System.currentTimeMillis()) replace(row.copy(phase = Occurrence.RINGING, resumeAt = 0))
+                else scheduleResume(row)
+            }
         }
+        store.save(rows)
+        loaded = true
+        publish()
+    }
 
-        // 异步：查标题回填通知 + 推进该条的重复规则
-        val app = applicationContext
-        CoroutineScope(Dispatchers.IO).launch {
-            val note = runCatching { NoteRepository(app).getNoteForReminder(noteId) }.getOrNull()
-            val title = note?.title ?: ""
-            if (actives.containsKey(noteId)) {
-                actives[noteId] = title
-                if (title.isNotBlank()) {
-                    withContext(Dispatchers.Main) {
-                        runCatching {
-                            NotificationManagerCompat.from(this@ReminderService)
-                                .notify(notifId, buildOngoingNotification(this@ReminderService, noteId, title))
-                        }
-                    }
-                }
+    private suspend fun execute(intent: Intent?) {
+        val action = intent?.action ?: ACTION_FIRE
+        val id = intent?.getLongExtra(EXTRA_NOTE_ID, -1) ?: -1
+        val at = intent?.getLongExtra(EXTRA_EXPECTED_AT, -1) ?: -1
+        when (action) {
+            ACTION_MUTE, ACTION_MUTE_ALL -> {
+                rows.toList().filter {
+                    it.phase == Occurrence.RINGING &&
+                        (action == ACTION_MUTE_ALL || (id > 0 && at >= 0 && it.noteId == id && it.expectedAt == at))
+                }.forEach { replace(it.copy(phase = Occurrence.MUTED)) }
+                store.save(rows)
             }
-            if (note != null) {
-                runCatching {
-                    val repo = NoteRepository(app)
-                    val next = repo.nextRepeat(note.reminderAt ?: 0L, note.repeatRule)
-                    if (next != null && next > System.currentTimeMillis()) {
-                        repo.updateReminder(noteId, next, note.repeatRule)
-                        log("重复提醒 → 为 noteId=$noteId 排下一次")
+            ACTION_PREFERENCES -> Unit
+            ACTION_DISMISS, ACTION_SNOOZE -> {
+                // Tokens on UI/notification commands prevent old windows dismissing a new ring.
+                val targets = rows.filter { it.noteId == id && at >= 0 && it.expectedAt == at &&
+                    (action == ACTION_DISMISS || it.phase != Occurrence.SNOOZED) }
+                for (row in targets) {
+                    if (action == ACTION_DISMISS) {
+                        store.markConsumed(row)
+                        rows.remove(row)
                     } else {
-                        repo.updateReminder(noteId, null, null)
-                        log("一次性提醒 → 已清除 noteId=$noteId")
+                        val snoozed = row.copy(phase = Occurrence.SNOOZED, resumeAt = System.currentTimeMillis() + SNOOZE_MS)
+                        replace(snoozed)
                     }
                 }
+                store.save(rows)
+                targets.forEach { row ->
+                    cancelResume(row)
+                    if (action == ACTION_SNOOZE) rows.firstOrNull { it.key == row.key }?.let { scheduleResume(it) }
+                }
+            }
+            ACTION_DISMISS_ALL -> {
+                rows.forEach { store.markConsumed(it); cancelResume(it) }
+                rows.clear(); store.save(rows)
+            }
+            ACTION_RESUME -> {
+                val row = rows.firstOrNull { it.noteId == id && it.expectedAt == at } ?: return
+                if (row.phase != Occurrence.SNOOZED || row.resumeAt > System.currentTimeMillis()) return
+                if (store.note(id) == null) { store.markConsumed(row); rows.remove(row) }
+                else replace(row.copy(phase = Occurrence.RINGING, resumeAt = 0))
+                store.save(rows)
+            }
+            ACTION_RESTORE -> Unit
+            ACTION_FIRE -> fire(id, at)
+        }
+        publish()
+    }
+
+    private suspend fun fire(id: Long, expectedAt: Long) {
+        // Legacy/tokenless deliveries are intentionally inert. All v3 producers carry expectedAt.
+        if (id <= 0 || expectedAt < 0) return
+        if (rows.any { it.noteId == id && it.expectedAt == expectedAt }) return
+        val note = store.note(id) ?: return
+        val at = note.reminderAt ?: return
+        if (expectedAt >= 0 && at != expectedAt) return
+        if (at > System.currentTimeMillis() || store.consumed(id, at)) return
+        val next = RepeatRule.nextOccurrenceAfter(at, note.repeatRule, System.currentTimeMillis())
+        val row = Occurrence(id, at, note.title, note.repeatRule, next, store.allocateId())
+        rows.add(row)
+        store.save(rows) // write-ahead BEFORE SQL and before sound
+        if (!store.advance(row)) {
+            store.markConsumed(row); rows.remove(row); store.save(rows); return
+        }
+        replace(row.copy(phase = Occurrence.RINGING))
+        store.save(rows)
+        if (next != null) ReminderScheduler(this).schedule(id, next) else ReminderScheduler(this).cancel(id)
+        ReminderTicker.refresh()
+    }
+
+    private fun replace(row: Occurrence) {
+        val index = rows.indexOfFirst { it.key == row.key }
+        if (index >= 0) rows[index] = row
+    }
+
+    private fun publish() {
+        state.value = rows.map { RingingInfo(it.noteId, it.expectedAt, it.title, it.phase) }
+        presentationState.value = Presentation(loaded, state.value)
+    }
+
+    private var postedIds = emptySet<Int>()
+    private fun render() {
+        val previous = foregroundId
+        // Real FGS handoff BEFORE cancelling the old notification.
+        val primary = rows.firstOrNull { it.phase == Occurrence.RINGING } ?: rows.firstOrNull()
+        if (primary != null) {
+            startForeground(primary.notificationId, notification(primary))
+            foregroundId = primary.notificationId
+            rows.filter { it.key != primary.key }.forEach { row ->
+                runCatching { manager.notify(row.notificationId, notification(row)) }
             }
         }
+        val current = rows.map { it.notificationId }.toSet()
+        (postedIds - current).forEach { manager.cancel(it) }
+        if (previous != 0 && previous !in current) manager.cancel(previous)
+        postedIds = current
+        val ringing = rows.any { it.phase == Occurrence.RINGING }
+        if (ringing && !audible) {
+            audible = true
+            acquireWakeLock()
+            // Preference changes must not reset this finite occurrence session deadline.
+            handler.postDelayed(audioTimeout, MAX_RING_MS)
+        } else if (!ringing && audible) {
+            audible = false
+            handler.removeCallbacks(audioTimeout)
+            releaseWakeLock()
+        }
+        val shouldSound = ringing && !Settings.reminderMuted.value
+        val shouldVibrate = ringing && Settings.reminderVibrationEnabled.value
+        if (shouldSound != soundActive) {
+            soundActive = shouldSound
+            if (shouldSound) sound.start() else sound.stop()
+        }
+        if (shouldVibrate != vibrationActive) {
+            vibrationActive = shouldVibrate
+            if (shouldVibrate) ReminderVibrator.start(this) else ReminderVibrator.stop()
+        }
+    }
 
-        return START_REDELIVER_INTENT
+    private fun notification(row: Occurrence): Notification {
+        val open = PendingIntent.getActivity(this, 0, ReminderActivity.intent(this, row.noteId, row.expectedAt), PI_FLAGS)
+        val builder = NotificationCompat.Builder(this, NotificationHelper.CHANNEL_REMINDER)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(row.title.ifBlank { getString(R.string.notes) })
+            .setContentText(getString(if (row.phase == Occurrence.SNOOZED) R.string.rv3_snoozed else if (row.phase == Occurrence.MUTED) R.string.rv3_muted else R.string.rv3_slide))
+            .setContentIntent(open).setOngoing(true).setAutoCancel(false).setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setOnlyAlertOnce(true)
+            .addAction(0, getString(R.string.rv3_mute), commandPi(row, ACTION_MUTE))
+            .addAction(0, getString(R.string.rv3_dismiss), commandPi(row, ACTION_DISMISS))
+            .addAction(0, getString(R.string.rv3_snooze), commandPi(row, ACTION_SNOOZE))
+        // Official full-screen mechanism only. Unlocked/foreground behavior is the OS's choice.
+        if (row.phase == Occurrence.RINGING && Permissions.fullScreenIntentGranted(this)) {
+            builder.setFullScreenIntent(open, true)
+        }
+        return builder.build()
+    }
+
+    private fun commandPi(row: Occurrence, action: String): PendingIntent {
+        val i = commandIntent(this, action, row.noteId, row.expectedAt)
+        return if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(this, 0, i, PI_FLAGS)
+            else PendingIntent.getService(this, 0, i, PI_FLAGS)
+    }
+
+    private fun scheduleResume(row: Occurrence) {
+        val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        val pi = commandPi(row, ACTION_RESUME)
+        try {
+            am.setAlarmClock(android.app.AlarmManager.AlarmClockInfo(row.resumeAt,
+                PendingIntent.getActivity(this, 0, ReminderActivity.intent(this, row.noteId, row.expectedAt), PI_FLAGS)), pi)
+        } catch (e: Exception) {
+            Log.w(TAG, "Snooze not exact; system may delay", e)
+            runCatching { am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, row.resumeAt, pi) }
+        }
+        // In-process fallback; not a substitute for the system alarm.
+        handler.postDelayed({ commands.trySend(Command(commandIntent(this, ACTION_RESUME, row.noteId, row.expectedAt), 0)) },
+            (row.resumeAt - System.currentTimeMillis()).coerceAtLeast(0))
+    }
+
+    private fun cancelResume(row: Occurrence) {
+        runCatching { (getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager).cancel(commandPi(row, ACTION_RESUME)) }
+    }
+
+    private fun acquireCommandWakeLock() {
+        runCatching {
+            commandWakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "noteVE:reminder-command").apply {
+                    setReferenceCounted(false); acquire(30_000)
+                }
+        }.onFailure { Log.w(TAG, "Command wake lock unavailable", it) }
+    }
+
+    private fun acquireWakeLock() {
+        releaseWakeLock()
+        runCatching {
+            wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "noteVE:reminder").apply {
+                    setReferenceCounted(false); acquire(MAX_RING_MS + 5_000)
+                }
+        }.onFailure { Log.w(TAG, "Wake lock unavailable", it) }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) runCatching { it.release() } }
+        wakeLock = null
     }
 
     override fun onDestroy() {
-        log("onDestroy（剩余活跃 ${actives.size}）")
-        if (receiverRegistered) {
-            runCatching { unregisterReceiver(screenReceiver) }
-            receiverRegistered = false
-        }
-        handler.removeCallbacks(graceRunnable)
-        // ★ 普通通知不会随服务销毁而消失，必须显式撤销，否则会残留成「僵尸提醒」
-        for (id in actives.keys.toList()) {
-            runCatching { NotificationManagerCompat.from(this).cancel(ongoingIdFor(id)) }
-        }
-        actives.clear()
-        foregroundNoteId = 0L
-        ReminderVibrator.stop()
+        handler.removeCallbacksAndMessages(null)
+        runCatching { unregisterReceiver(screenReceiver) }
+        sound.stop(); ReminderVibrator.stop(); releaseWakeLock()
+        scope.cancel(); commands.close()
+        state.value = emptyList()
+        presentationState.value = Presentation(false, emptyList())
+        commandWakeLock?.let { if (it.isHeld) runCatching { it.release() } }
+        commandWakeLock = null
+        // Keep durable rows. START_STICKY/cold-start restore resumes the SAME occurrence.
+        postedIds.forEach { manager.cancel(it) }
         super.onDestroy()
     }
 
+    data class RingingInfo(val noteId: Long, val expectedAt: Long, val title: String, val phase: String)
+    data class Presentation(val ready: Boolean, val rows: List<RingingInfo>)
     companion object {
         private const val TAG = "NoteReminder"
-
-        /** 息屏宽限期：超过此时长才算「用户已离开」，避免误判完成。 */
-        private const val SCREEN_OFF_GRACE_MS = 8_000L
-
-        /** 通知 ID 段位：进行中与已完成分开，避免两条提醒的 ID 互相顶掉。 */
-        private const val ONGOING_BASE = 2_000
-        private const val DONE_BASE = 200_000
-        private const val ID_RANGE = 100_000L
-
+        private const val BOOTSTRAP_ID = 29_999
+        private const val MAX_RING_MS = 10 * 60 * 1000L
+        private const val SNOOZE_MS = 5 * 60 * 1000L
+        private const val PI_FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         const val EXTRA_NOTE_ID = "note_id"
+        const val EXTRA_EXPECTED_AT = "expected_at"
+        const val ACTION_FIRE = "com.noteVE.reminder.FIRE"
+        const val ACTION_RESTORE = "com.noteVE.reminder.RESTORE"
+        const val ACTION_DISMISS = "com.noteVE.reminder.DISMISS"
+        const val ACTION_SNOOZE = "com.noteVE.reminder.SNOOZE"
+        private const val ACTION_RESUME = "com.noteVE.reminder.RESUME"
+        const val ACTION_MUTE = "com.noteVE.reminder.MUTE"
+        private const val ACTION_MUTE_ALL = "com.noteVE.reminder.MUTE_ALL"
+        private const val ACTION_PREFERENCES = "com.noteVE.reminder.PREFERENCES"
+        private const val ACTION_DISMISS_ALL = "com.noteVE.reminder.DISMISS_ALL"
+        private val state = MutableStateFlow<List<RingingInfo>>(emptyList())
+        val activeOccurrences = state.asStateFlow()
+        private val presentationState = MutableStateFlow(Presentation(false, emptyList()))
+        val presentation = presentationState.asStateFlow()
+        val hasActive: Boolean get() = state.value.isNotEmpty()
+        fun isActive(noteId: Long): Boolean = state.value.any { it.noteId == noteId }
 
-        /** 活跃提醒：noteId → 标题。按 noteId 隔离，杜绝单实例状态互相覆盖。 */
-        private val actives = ConcurrentHashMap<Long, String>()
+        fun commandIntent(context: Context, action: String, id: Long, at: Long): Intent =
+            Intent(context, ReminderService::class.java).setAction(action)
+                .setData(android.net.Uri.parse("noteve://command/$id/$at/${action.substringAfterLast('.') }"))
+                .putExtra(EXTRA_NOTE_ID, id).putExtra(EXTRA_EXPECTED_AT, at)
 
-        /** 当前占据前台通知槽位的 noteId（0 表示无）。前台槽位全服务仅一个。 */
-        @Volatile
-        private var foregroundNoteId = 0L
+        fun send(context: Context, action: String, id: Long, at: Long): Boolean =
+            runCatching { ContextCompat.startForegroundService(context, commandIntent(context, action, id, at)) }
+                .onFailure { Log.w(TAG, "Reminder command launch denied", it) }.isSuccess
 
-        @Volatile
-        private var receiverRegistered = false
+        /** Legacy lifecycle calls are inert. Only explicit token-bearing controls may acknowledge. */
+        @Deprecated("Use token-bearing send from an explicit user action")
+        fun complete(context: Context, noteId: Long) = Unit
+        @Deprecated("Opening/unlocking the app is not acknowledgment")
+        fun completeAll(context: Context) = Unit
 
-        /** 稳定且唯一的通知 ID（同一 noteId 永远得到同一值，跨进程重建也不变）。 */
-        fun ongoingIdFor(noteId: Long): Int = (ONGOING_BASE + noteId % ID_RANGE).toInt()
-
-        /** 「提醒已完成」通知的 ID（与进行中错开，避免互相覆盖）。 */
-        fun doneIdFor(noteId: Long): Int = (DONE_BASE + noteId % ID_RANGE).toInt()
-
-        /** 是否存在任何活跃提醒（供 MainActivity 判断是否需兜底停震动）。 */
-        val hasActive: Boolean get() = actives.isNotEmpty()
-
-        /** 指定笔记是否正在提醒中。 */
-        fun isActive(noteId: Long): Boolean = actives.containsKey(noteId)
-
-        /**
-         * 完成**指定**提醒（用户点击该条通知 / 打开对应笔记）。
-         * 只影响这一条；仅当没有其它活跃提醒时才停服务。
-         */
-        fun complete(context: Context, noteId: Long) {
-            if (noteId <= 0) return
-            val title = actives.remove(noteId) ?: return
-            log("完成提醒 noteId=$noteId title=$title")
-            postDoneNotification(context, noteId, title)
-            runCatching { NotificationManagerCompat.from(context).cancel(ongoingIdFor(noteId)) }
-            promoteForegroundIfNeeded(context)
-            stopIfIdle(context)
+        /** Call from visible cold-start/reconcile; never blindly start media FGS from boot. */
+        fun restoreIfNeeded(context: Context) {
+            val prefs = context.getSharedPreferences("reminder_v3_occurrences", Context.MODE_PRIVATE)
+            if (prefs.getString("active", "[]") != "[]") send(context, ACTION_RESTORE, -1, -1)
         }
-
-        /**
-         * 完成**全部**活跃提醒（息屏宽限到期 / 解锁 / 用户打开应用）。
-         * 每条各自转「已完成」通知，互不干扰；结束后停服务。
-         */
-        fun completeAll(context: Context) {
-            val ids = actives.keys.toList()
-            if (ids.isEmpty()) return
-            for (id in ids) {
-                val title = actives.remove(id) ?: continue
-                postDoneNotification(context, id, title)
-                runCatching { NotificationManagerCompat.from(context).cancel(ongoingIdFor(id)) }
-            }
-            foregroundNoteId = 0L
-            ReminderVibrator.stop()
-            runCatching { context.stopService(Intent(context, ReminderService::class.java)) }
-        }
-
-        /** 前台主完成后，把剩余任一条提升为前台（否则服务会失去前台身份）。 */
-        private fun promoteForegroundIfNeeded(context: Context) {
-            if (foregroundNoteId == 0L || actives.containsKey(foregroundNoteId)) return
-            val next = actives.keys.firstOrNull() ?: run {
-                foregroundNoteId = 0L
-                return
-            }
-            val title = actives[next] ?: ""
-            runCatching {
-                val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE)
-                        as android.app.NotificationManager
-                mgr.notify(ongoingIdFor(next), buildOngoingNotification(context, next, title))
-            }
-            foregroundNoteId = next
-            log("前台槽位移交 noteId=$next")
-        }
-
-        /** 没有任何活跃提醒时停服务、停震动。 */
-        private fun stopIfIdle(context: Context) {
-            if (actives.isNotEmpty()) return
-            foregroundNoteId = 0L
-            ReminderVibrator.stop()
-            runCatching { context.stopService(Intent(context, ReminderService::class.java)) }
-        }
-
-        /** 发布「提醒已完成」通知（可划走，点击回到对应笔记）。 */
-        private fun postDoneNotification(context: Context, noteId: Long, title: String) {
-            NotificationHelper.createChannels(context)
-            val open = Intent(context, MainActivity::class.java).apply {
-                putExtra(MainActivity.EXTRA_NOTE_ID, noteId)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pi = PendingIntent.getActivity(
-                context, noteId.toInt(), open,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val n = NotificationCompat.Builder(context, NotificationHelper.CHANNEL_REMINDER)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(
-                    context.getString(
-                        R.string.reminder_done,
-                        title.ifBlank { context.getString(R.string.notes) }
-                    )
-                )
-                .setContentIntent(pi)
-                .setAutoCancel(true)
-                .build()
-            runCatching {
-                NotificationManagerCompat.from(context).notify(doneIdFor(noteId), n)
-            }
-        }
-
-        private fun log(msg: String) = Log.i(TAG, msg)
     }
-}
-
-/** 停驻通知构建。 */
-private fun buildOngoingNotification(context: Context, noteId: Long, title: String): Notification {
-    NotificationHelper.createChannels(context)
-    val open = Intent(context, MainActivity::class.java).apply {
-        putExtra(MainActivity.EXTRA_NOTE_ID, noteId)
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-    }
-    // ★ requestCode 用 noteId：每条提醒的 PendingIntent 相互独立
-    val pi = PendingIntent.getActivity(
-        context, noteId.toInt(), open,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-    return NotificationCompat.Builder(context, NotificationHelper.CHANNEL_REMINDER)
-        .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle(title.ifBlank { context.getString(R.string.notes) })
-        .setContentText(
-            context.getString(R.string.event_reminder) + " · " +
-                context.getString(R.string.click_to_open) + " · " +
-                context.getString(R.string.screen_off_to_dismiss)
-        )
-        .setContentIntent(pi)
-        .setOngoing(true)
-        .setCategory(NotificationCompat.CATEGORY_ALARM)
-        .setPriority(NotificationCompat.PRIORITY_MAX)
-        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        .build()
 }

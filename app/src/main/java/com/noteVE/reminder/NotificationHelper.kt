@@ -19,6 +19,7 @@ object NotificationHelper {
 
     const val CHANNEL_REMINDER = "reminder"
     const val CHANNEL_BACKUP = "backup"
+    const val CHANNEL_SERVICE = "reminder_service_v3"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -26,8 +27,17 @@ object NotificationHelper {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_REMINDER, context.getString(R.string.reminder_channel), NotificationManager.IMPORTANCE_MAX).apply {
                 setShowBadge(true)
+                // Service owns sound; do not introduce a second audio source on fresh installs.
+                // Existing user channel choices are intentionally not overwritten.
+                setSound(null, null)
                 enableVibration(false)         // ★ 关掉渠道震动：震动统一由 ReminderVibrator 控制，否则 cancel() 盖不住
                 setBypassDnd(false)
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_SERVICE, context.getString(R.string.reminder_channel), NotificationManager.IMPORTANCE_LOW).apply {
+                setSound(null, null)
+                enableVibration(false)
             }
         )
         nm.createNotificationChannel(
@@ -53,6 +63,7 @@ object NotificationHelper {
             .setContentTitle(title)
             .setContentText(body)
             .setContentIntent(pi)
+            .setSilent(true)
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(note.id.toInt(), n)

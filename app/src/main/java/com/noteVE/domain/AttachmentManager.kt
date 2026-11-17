@@ -16,7 +16,7 @@ class AttachmentManager(private val context: Context) {
     val attachmentDir: File
         get() = File(context.filesDir, "attachments").apply { mkdirs() }
 
-    fun resolve(relativeName: String): File = File(attachmentDir, relativeName)
+    fun resolve(relativeName: String): File = AttachmentNames.resolve(attachmentDir, relativeName)
 
     /** 从相册 URI 拷贝图片。**保留原文件名**（缺失时才用时间戳兜底）。 */
     suspend fun importFromUri(uri: Uri): String = withContext(Dispatchers.IO) {
@@ -45,25 +45,30 @@ class AttachmentManager(private val context: Context) {
         } else {
             "${fallbackPrefix}_${System.currentTimeMillis()}"
         }
-        val cleaned = raw.trim().replace(Regex("[\\\\/:*?\"<>|\n\r\t]"), "_")
-        return cleaned.ifBlank { "${fallbackPrefix}_${System.currentTimeMillis()}" }.take(60)
+        return AttachmentNames.displayBase(raw, fallbackPrefix)
     }
 
-    /** 同名时加 `_1`、`_2` 后缀，避免覆盖。 */
+    /** Atomically reserve the user-friendly name before copying. */
     private fun uniqueName(base: String, ext: String): String {
-        fun of(n: String) = if (ext.isBlank()) "$n" else "$n.$ext"
-        var f = File(attachmentDir, of(base))
-        var i = 1
-        while (f.exists()) { f = File(attachmentDir, of("${base}_$i")); i++ }
-        return f.name
+        val safeExt = ext.takeIf { it.length <= 12 && it.all(Char::isLetterOrDigit) } ?: "bin"
+        fun of(n: String) = if (safeExt.isBlank()) n else "$n.$safeExt"
+        var i = 0
+        while (true) {
+            val name = of(if (i == 0) base else "${base}_$i")
+            val target = resolve(name)
+            if (target.createNewFile()) return name
+            i++
+        }
     }
 
     private fun copyIn(uri: Uri, name: String): String {
-        val dest = File(attachmentDir, name)
-        val input = context.contentResolver.openInputStream(uri)
-            ?: throw IllegalStateException(context.getString(com.noteVE.R.string.err_cannot_read_image))
-        input.use { ins -> dest.outputStream().use { out -> ins.copyTo(out) } }
-        return name
+        val dest = resolve(name)
+        try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException(context.getString(com.noteVE.R.string.err_cannot_read_image))
+            input.use { ins -> dest.outputStream().use { out -> ins.copyTo(out) } }
+            return name
+        } catch (e: Exception) { dest.delete(); throw e }
     }
 
     /** 查询 URI 显示名（用于取扩展名）。 */
@@ -105,7 +110,7 @@ class AttachmentManager(private val context: Context) {
 
     fun delete(vararg names: String) {
         names.forEach { n ->
-            if (n.isNotBlank()) File(attachmentDir, n).delete()
+            resolve(n).delete()
         }
     }
 
@@ -115,20 +120,17 @@ class AttachmentManager(private val context: Context) {
      */
     fun rename(oldName: String, baseName: String): String {
         if (oldName.isBlank() || baseName.isBlank()) return oldName
-        val src = File(attachmentDir, oldName)
+        val src = resolve(oldName)
         if (!src.exists()) return oldName
         val ext = oldName.substringAfterLast('.', "")
         val safe = sanitize(baseName)
         fun target(n: String) =
-            if (ext.isBlank()) File(attachmentDir, n) else File(attachmentDir, "$n.$ext")
+            if (ext.isBlank()) resolve(n) else resolve("$n.$ext")
         var dst = target(safe)
         var i = 1
         while (dst.exists() && dst.name != oldName) { dst = target("${safe}_$i"); i++ }
         return if (src.renameTo(dst)) dst.name else oldName
     }
 
-    private fun sanitize(name: String): String {
-        val t = name.trim().replace(Regex("[/\\:*?\"<>|]"), "_")
-        return t.ifBlank { "file" }.take(80)
-    }
+    private fun sanitize(name: String): String = AttachmentNames.displayBase(name)
 }

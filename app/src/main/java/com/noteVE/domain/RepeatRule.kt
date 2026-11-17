@@ -38,6 +38,47 @@ object RepeatRule {
         return cal.timeInMillis
     }
 
+    /**
+     * First calendar occurrence strictly after now, skipping any backlog once (no day-by-day loop).
+     * Calendar uses the supplied/current time zone: wall-clock time survives DST, nonexistent local
+     * times are normalized by Calendar; month/year end clamps from this occurrence's anchor.
+     * At most 63 Calendar additions even for very old timestamps. null also denotes overflow.
+     */
+    fun nextOccurrenceAfter(
+        anchor: Long, rule: String?, now: Long,
+        zone: java.util.TimeZone = java.util.TimeZone.getDefault()
+    ): Long? {
+        val field = when (rule) {
+            DAILY -> Calendar.DAY_OF_MONTH
+            WEEKLY -> Calendar.WEEK_OF_YEAR
+            MONTHLY -> Calendar.MONTH
+            YEARLY -> Calendar.YEAR
+            else -> return null
+        }
+        fun candidate(count: Int): Long? = runCatching {
+            Calendar.getInstance(zone).apply {
+                timeInMillis = anchor
+                add(field, count)
+            }.timeInMillis.takeIf { it > anchor }
+        }.getOrNull()
+        val threshold = maxOf(anchor, now)
+        var low = 0
+        var high = 1
+        while (true) {
+            val value = candidate(high) ?: return null
+            if (value > threshold) break
+            low = high
+            if (high == Int.MAX_VALUE) return null
+            high = if (high > Int.MAX_VALUE / 2) Int.MAX_VALUE else high * 2
+        }
+        while (high - low > 1) {
+            val mid = low + (high - low) / 2
+            val value = candidate(mid) ?: return null
+            if (value > threshold) high = mid else low = mid
+        }
+        return candidate(high)
+    }
+
     /** 规则是否有效。 */
     fun isValid(rule: String?): Boolean = rule != null && rule in ALL
 }

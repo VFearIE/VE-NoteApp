@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_title">App updates</string>
+    <string name="update_manual">Checks run only when you tap the button. Updates come from the public GitHub repository; no account or token is used.</string>
+    <string name="update_platform">Platform edition: packages must be signed with your ROM platform key and supplied by your ROM maintainer. Root APK downloads and installation are disabled.</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_working">Working…</string>
+    <string name="update_download">Download root APK</string>
+    <string name="update_install">Install / retry installation</string>
+    <string name="update_cancel">Cancel</string>
+    <string name="update_cancelling">Cancelling… waiting for the connection and temporary file to close.</string>
+    <string name="update_digest_optional">When GitHub supplies SHA-256, it must match. Without a published digest, checks use HTTPS, file size, package identity, signer and version; a local SHA-256 protects the cached file.</string>
+    <string name="update_cancelled">Cancelled. You can retry when ready.</string>
+    <string name="update_current">You are up to date with the latest stable release.</string>
+    <string name="update_available">Update available: %1$s → %2$s</string>
+    <string name="update_ready">Verified download ready: %1$s</string>
+    <string name="update_progress">Downloading %1$d%% · %2$d / %3$d KiB</string>
+    <string name="update_progress_unknown">Downloading… %1$d KiB</string>
+    <string name="update_permission_retry">Allow installs from this app in system settings, return here, then tap Install / retry installation. No download is needed again.</string>
+    <string name="update_installer_opened">The system installer was opened. Installation is not yet confirmed; you can retry if it was cancelled.</string>
+    <string name="update_open_repository">Open public repository</string>
+    <string name="update_open_releases">Open GitHub Releases</string>
+    <string name="update_error_timeout">GitHub timed out; your network may restrict access. This does not mean there are no updates. Retry or open the public repository / Releases below.</string>
+    <string name="update_error_network">Unable to reach GitHub. Check your connection and retry, or open Releases in your browser.</string>
+    <string name="update_error_blocked">GitHub access was blocked or rate-limited. Try again later or open Releases in your browser.</string>
+    <string name="update_error_not_found">No public latest release was found. Open the repository or Releases to check manually.</string>
+    <string name="update_error_server">GitHub returned an unexpected response. Retry later or open Releases.</string>
+    <string name="update_error_release">Release metadata or the download address is invalid. For safety, use the public Releases page.</string>
+    <string name="update_error_no_apk">No single compatible signed root APK was found. Module, platform and unsigned APKs are not selected. Open Releases to inspect the assets.</string>
+    <string name="update_error_size">The download is empty, incomplete or has an unexpected size. Please download again.</string>
+    <string name="update_error_digest">The published digest is invalid or the downloaded file failed verification. Installation was blocked; download again.</string>
+    <string name="update_error_package">The file is not a readable APK for this app. Installation was blocked.</string>
+    <string name="update_error_signature">The APK signing certificate differs from this installation. Installation was blocked. Use the same trusted signing key; platform builds need the ROM platform signature.</string>
+    <string name="update_error_version">The version is invalid, does not match the release, or its versionCode is not newer. Installation was blocked.</string>
+    <string name="update_error_storage">Unable to save the update in cache. Check free space and download again.</string>
+    <string name="update_error_install">Unable to open installation or permission settings. Check system permissions and FileProvider configuration, then retry.</string>
+    <string name="update_error_browser">No browser could open this link.</string>
+</resources>

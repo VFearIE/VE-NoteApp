@@ -76,7 +76,7 @@ class BlockOpsTest {
 
     @Test
     fun `连续插入多个附件`() {
-        var blocks = listOf(t("abc"))
+        var blocks: List<Block> = listOf(t("abc"))
 
         // 在 "abc" 中间插图片 → a | img | bc
         blocks = BlockOps.splitAndInsert(blocks, 0, "a", Block.Image("1.jpg"), "bc")

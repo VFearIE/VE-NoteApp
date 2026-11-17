@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rv3_alarm">笔记提醒</string>
+    <string name="rv3_loading">正在加载提醒…</string>
+    <string name="rv3_slide">滑动以停止</string>
+    <string name="rv3_dismiss">停止</string>
+    <string name="rv3_snooze">稍后 · 5 分钟</string>
+    <string name="rv3_mute">静音</string>
+    <string name="rv3_snoozed">已稍后 5 分钟</string>
+    <string name="rv3_muted">已静音，尚未关闭</string>
+    <string name="rv3_command_failed">操作未能发送，请重试。</string>
+</resources>

@@ -6,85 +6,82 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 
-/**
- * 提醒调度器（**唯一调度入口**）。
- *
- * ## 双通道
- *
- * | 通道 | 适用 | 说明 |
- * |---|---|---|
- * | ① AlarmManager | **主路径** | 只有 `RTC_WAKEUP` 能唤醒深睡设备；由系统托管，进程死了也触发 |
- * | ② 进程内计时器（[ReminderTicker]） | 冗余 | `delay()` 基于单调时钟，深睡期间不到点 |
- *
- * ## ★ 为什么用 PendingIntent.getForegroundService 而不是 getBroadcast
- *
- * Android 9 起限制：**后台应用不能启动前台服务**（豁免列表仅含 `BOOT_COMPLETED`
- * 等系统广播，自定义广播不在其中）。
- *
- * 初版用 `getBroadcast` → 广播接收器再 `startForegroundService`，
- * 结果被系统拒绝（异常还被 `runCatching` 吞掉，表现为「只弹通知、无震动」）。
- *
- * 改为 `getForegroundService` 后，**由系统（AlarmManager）直接启动前台服务**，
- * 系统是发起方 → 不受后台限制 → 服务必定起来，震动/停驻通知都正常。
- *
- * 注：`getForegroundService` 需 API 26+；低版本降级为 `getBroadcast`（走 [ReminderTrigger]）。
- */
+/** AlarmManager is primary; a foreground-service PI still needs platform launch exemptions. */
 class ReminderScheduler(private val context: Context) {
-
+    enum class Result { EXACT, INEXACT, FAILED, PAST }
     private val am get() = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private val prefs get() = context.getSharedPreferences("reminder_v3_schedule", Context.MODE_PRIVATE)
 
-    /** 调度一条提醒。 */
-    fun schedule(noteId: Long, triggerAt: Long) {
-        if (triggerAt <= System.currentTimeMillis()) return
-        setSystemAlarm(noteId, triggerAt)
+    // Kept Unit-returning for the old Repository/Ticker callers.
+    fun schedule(noteId: Long, triggerAt: Long) { scheduleChecked(noteId, triggerAt) }
+
+    fun scheduleChecked(noteId: Long, triggerAt: Long): Result {
+        if (triggerAt <= System.currentTimeMillis()) {
+            ReminderTicker.refresh()
+            return Result.PAST
+        }
+        val previous = prefs.getLong("at_$noteId", 0)
+        if (previous != 0L && previous != triggerAt) cancelAt(noteId, previous)
+        val pi = pendingIntent(noteId, triggerAt)
+        val result = try {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showIntent(noteId, triggerAt)), pi)
+            Result.EXACT
+        } catch (e: Exception) {
+            try {
+                if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+                    Result.EXACT
+                } else {
+                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
+                    Result.INEXACT
+                }
+            } catch (fallback: Exception) {
+                Log.w("NoteReminder", "Alarm registration failed", fallback)
+                Result.FAILED
+            }
+        }
+        prefs.edit().putLong("at_$noteId", triggerAt).putString("health_$noteId", result.name).apply()
+        ReminderTicker.refresh()
+        return result
     }
 
-    /** 取消一条提醒。 */
+    fun status(noteId: Long): String? = prefs.getString("health_$noteId", null)
+
     fun cancel(noteId: Long) {
-        runCatching { am.cancel(pendingIntent(noteId)) }
+        val at = prefs.getLong("at_$noteId", 0)
+        if (at != 0L) cancelAt(noteId, at)
+        prefs.edit().remove("at_$noteId").remove("health_$noteId").apply()
+        // Cancel pre-v3 identity too. Its tokenless deliveries are validated by the service.
+        runCatching {
+            val legacy = Intent(context, if (Build.VERSION.SDK_INT >= 26) ReminderService::class.java else ReminderTrigger::class.java)
+                .setData(Uri.parse("note://$noteId"))
+            if (Build.VERSION.SDK_INT < 26) legacy.action = ReminderTrigger.ACTION_REMIND
+            val flags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            val pi = if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(context, noteId.toInt(), legacy, flags)
+                else PendingIntent.getBroadcast(context, noteId.toInt(), legacy, flags)
+            pi?.let { am.cancel(it); it.cancel() }
+        }
         ReminderTicker.refresh()
     }
 
-    // ---------------- AlarmManager 通道 ----------------
-
-    private fun setSystemAlarm(noteId: Long, triggerAt: Long) {
-        val pi = pendingIntent(noteId)
-        // 首选 setAlarmClock：与系统闹钟同级，Doze 不推迟，并在系统显示「下一个闹钟」。
-        val shown = runCatching {
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, pi), pi)
-            true
-        }.getOrDefault(false)
-        if (shown) return
-        if (canExact()) {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-        } else {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi)
-        }
+    private fun cancelAt(id: Long, at: Long) {
+        runCatching { pendingIntent(id, at).let { am.cancel(it); it.cancel() } }
     }
 
-    /**
-     * 构造 PendingIntent：API 26+ 直接拉起前台服务；低版本走广播中转。
-     * 只携带 noteId —— 标题等由服务自己查库获取。
-     */
-    private fun pendingIntent(noteId: Long): PendingIntent {
+    private fun pendingIntent(id: Long, at: Long): PendingIntent {
+        val i = Intent(context, if (Build.VERSION.SDK_INT >= 26) ReminderService::class.java else ReminderTrigger::class.java)
+            .setData(Uri.parse("noteve://alarm/$id/$at"))
+            .putExtra(ReminderService.EXTRA_NOTE_ID, id)
+            .putExtra(ReminderService.EXTRA_EXPECTED_AT, at)
+        i.action = if (Build.VERSION.SDK_INT >= 26) ReminderService.ACTION_FIRE else ReminderTrigger.ACTION_REMIND
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return if (Build.VERSION.SDK_INT >= 26) {
-            val intent = Intent(context, ReminderService::class.java).apply {
-                data = Uri.parse("note://$noteId")
-                putExtra(ReminderService.EXTRA_NOTE_ID, noteId)
-            }
-            PendingIntent.getForegroundService(context, noteId.toInt(), intent, flags)
-        } else {
-            val intent = Intent(context, ReminderTrigger::class.java).apply {
-                action = ReminderTrigger.ACTION_REMIND
-                data = Uri.parse("note://$noteId")
-                putExtra(ReminderTrigger.EXTRA_NOTE_ID, noteId)
-            }
-            PendingIntent.getBroadcast(context, noteId.toInt(), intent, flags)
-        }
+        return if (Build.VERSION.SDK_INT >= 26) PendingIntent.getForegroundService(context, 0, i, flags)
+            else PendingIntent.getBroadcast(context, 0, i, flags)
     }
 
-    private fun canExact(): Boolean =
-        if (Build.VERSION.SDK_INT >= 31) am.canScheduleExactAlarms() else true
+    private fun showIntent(id: Long, at: Long): PendingIntent = PendingIntent.getActivity(
+        context, 0, ReminderActivity.intent(context, id, at),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 }

@@ -28,6 +28,8 @@
     <string name="create_note">New note</string>
     <string name="import_single">Import backup</string>
     <string name="reminder_item">Reminder</string>
+    <string name="fullscreen_reminder_permission">Full-screen reminder</string>
+    <string name="fullscreen_reminder_permission_desc">Allow VE Notes to show the alarm page over the lock screen (Android 14+).</string>
     <string name="delete_confirm">Delete note "%1$s"? This cannot be undone.</string>
     <string name="got_it">Got it</string>
     <string name="single_backup_notice">This is a single backup. Import it via single import.</string>

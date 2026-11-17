@@ -5,6 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import com.noteVE.data.Note
 import com.noteVE.data.NoteDao
 import com.noteVE.data.NoteDatabase
@@ -19,7 +24,8 @@ import java.io.OutputStream
 /** 业务仓库：块存储、附件、闹钟、导入导出。 */
 class NoteRepository(private val context: Context) {
 
-    private val dao: NoteDao = NoteDatabase.get(context).noteDao()
+    private val database = NoteDatabase.get(context)
+    private val dao: NoteDao = database.noteDao()
     private val attachments = AttachmentManager(context)
     private val alarms = ReminderScheduler(context)
 
@@ -43,8 +49,7 @@ class NoteRepository(private val context: Context) {
         dao.getById(id)?.let { BlockSerializer.fromJson(it.body) } ?: emptyList()
 
     suspend fun touchLastOpened(id: Long) {
-        val n = dao.getById(id) ?: return
-        dao.update(n.copy(lastOpenedAt = System.currentTimeMillis()))
+        dao.touchLastOpened(id, System.currentTimeMillis())
     }
 
     /** 保存笔记（按块模型），返回笔记 id。 */
@@ -55,8 +60,10 @@ class NoteRepository(private val context: Context) {
         reminderAt: Long?,
         repeatRule: String?,
         labels: List<String>,
-        pinned: Boolean
+        pinned: Boolean,
+        preserveReminder: Boolean = false
     ): Long {
+        blocks.forEach { AttachmentNames.key(it) }
         val (images, audios, files) = BlockSerializer.attachmentPaths(blocks)
         val plain = BlockSerializer.toPlainText(blocks)
         val body = BlockSerializer.toJson(blocks)
@@ -72,25 +79,22 @@ class NoteRepository(private val context: Context) {
             )
             val newId = dao.insert(note)
             if (reminderAt != null) alarms.schedule(newId, reminderAt)
+            ReminderTicker.refresh()
             return newId
         } else {
-            val old = dao.getById(id) ?: return 0L
-            val note = old.copy(
-                title = title, body = body, plainText = plain, modifiedAt = now,
-                reminderAt = reminderAt, repeatRule = repeatRule,
-                imagePaths = images, voiceRecords = audios, filePaths = files,
-                labels = labels, pinned = pinned
-            )
-            dao.update(note)
-            if (reminderAt != null && reminderAt > now) alarms.schedule(id, reminderAt)
-            else alarms.cancel(id)
+            val changed = dao.updateContent(id, title, body, plain, now,
+                JSONArray(images).toString(), JSONArray(audios).toString(), JSONArray(files).toString(),
+                JSONArray(labels).toString(), pinned)
+            check(changed == 1) { "Note no longer exists" }
+            // Body-only saves must not revive an occurrence already advanced by the service.
+            // Default false preserves the historical explicit-save reminder contract.
+            if (!preserveReminder) updateReminder(id, reminderAt, repeatRule)
             return id
         }
     }
 
     suspend fun updateReminder(id: Long, at: Long?, rule: String?) {
-        val n = dao.getById(id) ?: return
-        dao.update(n.copy(reminderAt = at, repeatRule = rule))
+        if (dao.updateReminder(id, at, rule) == 0) return
         if (at != null && at > System.currentTimeMillis()) alarms.schedule(id, at)
         else alarms.cancel(id)
         // 通知进程内计时器重算（否则要等旧的挂起超时才生效）
@@ -107,16 +111,27 @@ class NoteRepository(private val context: Context) {
      */
     suspend fun delete(note: Note) {
         alarms.cancel(note.id)
-        val (images, audios, files) = BlockSerializer.attachmentPaths(
-            BlockSerializer.fromJson(note.body)
-        )
-        attachments.delete(*images.toTypedArray())
-        audios.forEach { deleteVoice(it) }
-        files.forEach { deleteFile(it) }
+        // Commit removal first, then clean only files not referenced by another saved note.
         dao.delete(note)
+        val remaining = dao.getAll().flatMap { BlockSerializer.fromJson(it.body) }
+            .mapNotNull { runCatching { AttachmentNames.key(it) }.getOrNull() }.toSet()
+        for (block in BlockSerializer.fromJson(note.body)) {
+            val key = runCatching { AttachmentNames.key(block) }.getOrNull() ?: continue
+            if (key in remaining) continue
+            runCatching { if (block is Block.Audio) deleteVoice(block.path) else attachments.delete(key.substringAfter('/')) }
+                .onFailure { Log.w(TAG, "Attachment cleanup rejected/failed", it) }
+        }
     }
 
-    suspend fun update(note: Note) = dao.update(note)
+    /** Legacy list caller only changes pin state. Never write its stale body/reminder snapshot. */
+    suspend fun update(note: Note) = dao.updatePinned(note.id, note.pinned)
+
+    suspend fun compareAndSetReminder(id: Long, expectedAt: Long, at: Long?, rule: String?): Boolean {
+        if (dao.compareAndSetReminder(id, expectedAt, at, rule) != 1) return false
+        if (at != null && at > System.currentTimeMillis()) alarms.schedule(id, at) else alarms.cancel(id)
+        ReminderTicker.refresh()
+        return true
+    }
 
     /**
      * 校验并修复「派生列与 body 不一致」的笔记。
@@ -134,7 +149,7 @@ class NoteRepository(private val context: Context) {
                 BlockSerializer.fromJson(n.body)
             )
             if (n.imagePaths != images || n.voiceRecords != audios || n.filePaths != files) {
-                dao.update(n.copy(imagePaths = images, voiceRecords = audios, filePaths = files))
+                dao.repairDerived(n.id, n.body, JSONArray(images).toString(), JSONArray(audios).toString(), JSONArray(files).toString())
                 fixed++
             }
         }
@@ -157,16 +172,17 @@ class NoteRepository(private val context: Context) {
     fun renameFile(oldName: String, baseName: String): String = attachments.rename(oldName, baseName)
 
     private fun recordingsDir(): File = File(context.filesDir, "recordings").apply { mkdirs() }
-    fun resolveVoice(name: String): File = File(recordingsDir(), name)
-    fun createTempRecordingFile(): File = File(context.filesDir, "recordings/tmp_${System.currentTimeMillis()}.m4a")
+    fun resolveVoice(name: String): File = AttachmentNames.resolve(recordingsDir(), name)
+    fun createTempRecordingFile(): File = AttachmentNames.reserve(recordingsDir(), "tmp.m4a")
 
     fun finalizeRecording(temp: File, name: String): String {
-        val safe = sanitizeName(name)
-        val dir = recordingsDir()
-        var f = File(dir, "$safe.m4a"); var i = 1
-        while (f.exists()) { f = File(dir, "${safe}_$i.m4a"); i++ }
-        if (!temp.renameTo(f)) { temp.copyTo(f, overwrite = true); temp.delete() }
-        return f.name
+        require(temp.absoluteFile == resolveVoice(temp.name).absoluteFile) { "Foreign recording source" }
+        val f = AttachmentNames.reserve(recordingsDir(), "${sanitizeName(name)}.m4a")
+        try {
+            temp.inputStream().use { input -> f.outputStream().use { input.copyTo(it) } }
+            temp.delete()
+            return f.name
+        } catch (e: Exception) { f.delete(); throw e }
     }
 
     fun deleteVoice(name: String) { resolveVoice(name).delete() }
@@ -176,13 +192,12 @@ class NoteRepository(private val context: Context) {
         if (!old.exists()) return oldName
         val safe = sanitizeName(newName)
         val dir = recordingsDir()
-        var f = File(dir, "$safe.m4a"); var i = 1
-        while (f.exists() && f.name != oldName) { f = File(dir, "${safe}_$i.m4a"); i++ }
+        var f = resolveVoice("$safe.m4a"); var i = 1
+        while (f.exists() && f.name != oldName) { f = resolveVoice("${safe}_$i.m4a"); i++ }
         return if (old.renameTo(f)) f.name else oldName
     }
 
-    private fun sanitizeName(name: String): String =
-        name.trim().ifBlank { "recording" }.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+    private fun sanitizeName(name: String): String = AttachmentNames.displayBase(name, "recording")
 
     // ---- 提醒 ----
 
@@ -217,10 +232,9 @@ class NoteRepository(private val context: Context) {
                 }
                 now - at <= MISSED_GRACE_MS -> {
                     Log.i(TAG, "补发过期提醒 note=${note.id} 过期=${(now - at) / 1000}s")
-                    // 标题由服务自查，这里只传 id
-                    val svc = Intent(context, ReminderService::class.java).apply {
-                        putExtra(ReminderService.EXTRA_NOTE_ID, note.id)
-                    }
+                    val svc = ReminderService.commandIntent(
+                        context, ReminderService.ACTION_FIRE, note.id, at
+                    )
                     runCatching { ContextCompat.startForegroundService(context, svc) }
                         .onFailure { Log.w(TAG, "补发启动服务失败: $it") }
                     pending++
@@ -248,7 +262,8 @@ class NoteRepository(private val context: Context) {
 
     /** 下一条待办提醒（计时器用）。 */
     suspend fun nextDueReminder(): Note? = dao.nextDueReminder()
-    fun nextRepeat(triggerAt: Long, rule: String?): Long? = RepeatRule.next(triggerAt, rule)
+    fun nextRepeat(triggerAt: Long, rule: String?): Long? =
+        RepeatRule.nextOccurrenceAfter(triggerAt, rule, System.currentTimeMillis())
 
     // ---- 导出 ----
 
@@ -266,23 +281,24 @@ class NoteRepository(private val context: Context) {
                 is Block.File -> resolveFile(name)
                 else -> resolveVoice(name)
             }
-            if (f.exists()) map[name] = f.readBytes()
+            check(f.isFile) { "Missing attachment: $name" }
+            map[AttachmentNames.key(b)!!] = f.readBytes()
         }
         return map
     }
 
-    suspend fun exportSingle(id: Long, out: OutputStream): Boolean {
-        val note = dao.getById(id) ?: return false
+    suspend fun exportSingle(id: Long, out: OutputStream): Boolean = withContext(Dispatchers.IO) {
+        val note = dao.getById(id) ?: return@withContext false
         val blocks = BlockSerializer.fromJson(note.body)
         val packed = PackedNote(
             note.title, blocks, note.labels, note.createdAt, note.modifiedAt,
             note.lastOpenedAt, note.pinned, note.reminderAt, note.repeatRule
         )
         NotePackage.writeSingle(out, packed, readAttachments(blocks))
-        return true
+        true
     }
 
-    suspend fun exportFull(out: OutputStream) {
+    suspend fun exportFull(out: OutputStream) = withContext(Dispatchers.IO) {
         val notes = dao.getAll()
         val packed = notes.map { n ->
             val blocks = BlockSerializer.fromJson(n.body)
@@ -305,73 +321,52 @@ class NoteRepository(private val context: Context) {
      * 规则：仅新增，按 title+createdAt 去重，不覆盖已有笔记。
      */
     suspend fun importAuto(input: InputStream): ImportResult {
-        return when (val d = NotePackage.read(input)) {
-            is PackageData.Single -> {
-                if (dao.findExisting(d.note.title, d.note.createdAt) != null) {
-                    ImportResult.Imported(0, 1)
-                } else {
-                    insertPacked(d.note, d.attachments)
-                    ImportResult.Imported(1, 0)
-                }
-            }
-            is PackageData.Full -> {
-                var added = 0; var skipped = 0
-                for (p in d.notes) {
-                    if (dao.findExisting(p.title, p.createdAt) != null) { skipped++; continue }
-                    insertPacked(p, d.attachments)
-                    added++
+        val data = withContext(Dispatchers.IO) { NotePackage.read(input) }
+        val (notes, bytes) = when (data) {
+            is PackageData.Single -> listOf(data.note) to data.attachments
+            is PackageData.Full -> data.notes to data.attachments
+            else -> return ImportResult.Invalid
+        }
+        // Independent, exclusively reserved files: failures cannot overwrite any old attachment.
+        // Files may remain orphaned on process death; DB never references an incomplete copy.
+        val staged = mutableListOf<File>()
+        return withContext(NonCancellable) {
+            try {
+                var added = 0
+                var skipped = 0
+                database.withTransaction {
+                    for (p in notes) {
+                        if (dao.findExisting(p.title, p.createdAt) != null) { skipped++; continue }
+                        val rewritten = AttachmentNames.rewriteBlocks(p.blocks) { key ->
+                            val dir = if (key.startsWith("recordings/")) recordingsDir() else attachments.attachmentDir
+                            val dest = AttachmentNames.reserve(dir, key.substringAfter('/'))
+                            staged.add(dest)
+                            val content = bytes[key] ?: bytes[key.substringAfter('/')]
+                                ?: error("Missing attachment: $key")
+                            dest.outputStream().use { it.write(content) }
+                            dest.name
+                        }
+                        insertPacked(p.copy(blocks = rewritten))
+                        added++
+                    }
                 }
                 ImportResult.Imported(added, skipped)
+            } catch (e: Exception) {
+                staged.forEach { runCatching { it.delete() } }
+                // Rollback has completed; caller receives a failure, never partial success.
+                throw e
             }
-            else -> ImportResult.Invalid
         }
     }
 
-    /** 目标文件是否位于 [dir] 之内（用规范化路径比较，可识别 `..` 与软链跳转）。 */
-    private fun isInside(target: java.io.File, dir: java.io.File): Boolean = try {
-        val base = dir.canonicalFile
-        val t = target.canonicalFile
-        t.path == base.path || t.path.startsWith(base.path + java.io.File.separator)
-    } catch (t: Throwable) {
-        false
-    }
-
-    private suspend fun insertPacked(p: PackedNote, attachments: Map<String, ByteArray>): Long {
-        for (b in p.blocks) {
-            val name = when (b) {
-                is Block.Image -> b.path
-                is Block.Audio -> b.path
-                is Block.File -> b.path
-                else -> null
-            } ?: continue
-            val bytes = attachments[name] ?: continue
-            val dest = when (b) {
-                is Block.Image -> resolveImage(name)
-                is Block.File -> resolveFile(name)
-                else -> resolveVoice(name)
-            }
-            // ★ 纵深防御：即便上游已校验过包内条目名，这里仍确认最终写入路径
-            //   确实位于预期目录之内 —— 阻断任何形式的路径穿越（../、符号链接等）。
-            // ★ 注意：本方法的参数名为 `attachments`（包内的附件字节表），
-            //   它会遮蔽类字段 `attachments`（AttachmentManager）——
-            //   故这里必须用 `this.attachments` 才能取到附件目录。
-            if (!isInside(dest, this.attachments.attachmentDir) &&
-                !isInside(dest, File(context.filesDir, "recordings"))
-            ) {
-                Log.w(TAG, "拒绝写出目录之外的附件: ${dest.path}")
-                continue
-            }
-            dest.parentFile?.mkdirs()
-            dest.writeBytes(bytes)
-        }
+    private suspend fun insertPacked(p: PackedNote): Long {
         val (images, audios, files) = BlockSerializer.attachmentPaths(p.blocks)
-        val note = Note(
+        return dao.insert(Note(
             title = p.title, body = BlockSerializer.toJson(p.blocks),
             plainText = BlockSerializer.toPlainText(p.blocks),
             createdAt = p.createdAt, modifiedAt = p.modifiedAt, lastOpenedAt = p.lastOpenedAt,
             pinned = p.pinned, reminderAt = p.reminderAt, repeatRule = p.repeatRule,
             imagePaths = images, voiceRecords = audios, filePaths = files, labels = p.labels
-        )
-        return dao.insert(note)
+        ))
     }
 }

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_title">应用更新</string>
+    <string name="update_manual">仅在点击按钮后检查。更新来自 GitHub 公开仓库，不需要登录，也不使用任何令牌。</string>
+    <string name="update_platform">平台定制版：安装包必须使用当前 ROM 的平台密钥签名，请向 ROM 维护者获取。本页不会下载或安装 root 版 APK。</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_working">正在处理…</string>
+    <string name="update_download">下载 root 版 APK</string>
+    <string name="update_install">安装 / 重试安装</string>
+    <string name="update_cancel">取消</string>
+    <string name="update_cancelling">正在取消，等待网络连接及临时文件关闭…</string>
+    <string name="update_digest_optional">GitHub 提供 SHA-256 时必须匹配；未提供发布摘要时，仍校验 HTTPS、文件大小、包名、签名及版本，并用本地 SHA-256 检查缓存是否变化。</string>
+    <string name="update_cancelled">已取消，可稍后重试。</string>
+    <string name="update_current">当前已是最新稳定版本。</string>
+    <string name="update_available">发现新版本：%1$s → %2$s</string>
+    <string name="update_ready">安装包已校验：%1$s</string>
+    <string name="update_progress">正在下载 %1$d%% · %2$d / %3$d KiB</string>
+    <string name="update_progress_unknown">正在下载… %1$d KiB</string>
+    <string name="update_permission_retry">请在系统设置中允许此应用安装未知应用，返回后点击「安装 / 重试安装」，无需重新下载。</string>
+    <string name="update_installer_opened">已打开系统安装器，不代表安装已完成。如取消安装，可再次重试。</string>
+    <string name="update_open_repository">打开公开仓库</string>
+    <string name="update_open_releases">打开 GitHub Releases</string>
+    <string name="update_error_timeout">访问 GitHub 超时，当前网络可能受限；这不代表没有更新。请重试，或点击下方公开仓库 / Releases 链接。</string>
+    <string name="update_error_network">暂时无法连接 GitHub。请检查网络后重试，或在浏览器打开 Releases。</string>
+    <string name="update_error_blocked">GitHub 访问受限或触发请求频率限制。请稍后重试，或打开 Releases。</string>
+    <string name="update_error_not_found">未找到公开的最新发布。可打开仓库或 Releases 手动查看。</string>
+    <string name="update_error_server">GitHub 返回了异常响应。请稍后重试或打开 Releases。</string>
+    <string name="update_error_release">发布信息或下载地址不符合要求。为保证安全，请打开公开 Releases 查看。</string>
+    <string name="update_error_no_apk">未找到唯一且适用的已签名 root APK。不会选择模块、平台版或未签名包，请打开 Releases 查看附件。</string>
+    <string name="update_error_size">下载为空、不完整或文件大小不符，请重新下载。</string>
+    <string name="update_error_digest">发布摘要无效或下载文件校验不通过，已阻止安装，请重新下载。</string>
+    <string name="update_error_package">文件不是本应用可识别的 APK，已阻止安装。</string>
+    <string name="update_error_signature">安装包签名与当前应用不一致，已阻止安装。请获取相同可信密钥签名的版本；平台版需 ROM 平台签名。</string>
+    <string name="update_error_version">版本格式不合法、与发布版本不符，或 versionCode 未递增，已阻止安装。</string>
+    <string name="update_error_storage">无法将更新保存到缓存，请检查剩余空间后重新下载。</string>
+    <string name="update_error_install">无法打开安装器或授权设置。请检查系统权限和 FileProvider 配置，然后重试。</string>
+    <string name="update_error_browser">没有可打开此链接的浏览器。</string>
+</resources>

@@ -3,7 +3,7 @@
 > 轻量、无广告、可离线使用的 Android 原生笔记应用。
 > 面向小尺寸屏幕（手表 / 小屏设备）优化，同时兼容常规手机。
 
-[![Platform](https://img.shields.io/badge/Android-7.0%20~%2014-3F51B5)](https://developer.android.com)
+[![Platform](https://img.shields.io/badge/Android-7.0%20~%2015-5B8DEF)](https://developer.android.com)
 [![minSdk](https://img.shields.io/badge/minSdk-24-blue)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-Apache%202.0-green)](LICENSE)
 
@@ -32,6 +32,14 @@
 - 本仓库**如实披露**这一点，遵循开源社区的诚实原则。
 
 如果你在寻找"由人类工程师手写的高质量参考实现"，本项目可能不符合预期；
+### 参与开发的 AI 模型
+
+| 阶段 | 模型 |
+|---|---|
+| 项目初始开发（1.x – 2.x） | DeepSeek V4 Pro、DeepSeek V4.1 Flash |
+| 3.0.0 版本维护（编辑器可靠性、提醒重写、应用内更新） | GPT 6.1 Sol |
+| 3.0.0 UI 优化与重写（设计系统、动效语言、各页面重设计） | Claude Opus 5.5 |
+
 如果你对"AI 主导开发能达到什么程度"感兴趣，欢迎阅读源码、提交 Issue 或参与讨论。
 
 ---
@@ -76,8 +84,8 @@
 | 项 | 值 |
 |---|---|
 | 最低版本 | Android 7.0（API 24） |
-| 目标版本 | Android 14（API 34） |
-| 编译版本 | API 34 |
+| 目标版本 | Android 15（API 35） |
+| 编译版本 | API 35 |
 
 > **兼容性说明（如实声明）**
 >
@@ -239,6 +247,7 @@ sealed class Block {
 optimized for small screens (smartwatches) while remaining usable on phones.
 
 > **Full disclosure**: This project's code and engineering are **entirely produced by AI coding agents**.
+> Initial development by DeepSeek V4 Pro & V4.1 Flash; v3.0.0 maintained by GPT 6.1 Sol; UI redesign by Claude Opus 5.5.
 > The developer (VFearIE) does not write code directly — their role is product definition,
 > interaction requirements, technical trade-offs, real-device testing, and iterative feedback.
 > Architecture, source code, comments, documentation, and build scripts are all AI-generated.

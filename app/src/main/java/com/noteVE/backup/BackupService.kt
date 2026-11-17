@@ -30,6 +30,7 @@ class BackupService : Service() {
         if (action == null || uri == null) { stopSelf(startId); return START_NOT_STICKY }
 
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.backup_running)))
+        receiver?.send(R_STARTED, Bundle())
         CoroutineScope(Dispatchers.IO).launch {
             val repo = NoteRepository(this@BackupService)
             val (code, msg) = try {
@@ -83,6 +84,7 @@ class BackupService : Service() {
         const val EXTRA_RESULT = "result"
         const val EXTRA_MSG = "message"
         const val R_OK = 1
+        const val R_STARTED = 2
         const val R_ERROR = 0
         const val R_INVALID = 4
         private const val NOTIFICATION_ID = 1001

@@ -69,7 +69,7 @@ object HtmlEx {
             val g = (c shr 8) and 0xFF
             val b = c and 0xFF
             val nearBlack = r < DARK_THRESHOLD && g < DARK_THRESHOLD && b < DARK_THRESHOLD
-            val replacement = if (nearBlack) ForegroundColorSpan(0xFFFFFFFF.toInt()) else span
+            val replacement = if (nearBlack) DisplayColorSpan(c, 0xFFFFFFFF.toInt()) else span
             val s = src.getSpanStart(span)
             val e = src.getSpanEnd(span)
             if (s >= 0 && e > s) {
@@ -85,6 +85,8 @@ object HtmlEx {
         }
         return out
     }
+
+    private class DisplayColorSpan(val original: Int, display: Int) : ForegroundColorSpan(display)
 
     fun toHtml(spanned: Spanned): String {
         val text = spanned.toString()
@@ -116,7 +118,7 @@ object HtmlEx {
             }
 
             i = if (nl < 0) n else nl + 1
-            if (pType == 0 && i < n) out.append("<br>")
+            if (pType == 0 && nl >= 0) out.append("<br>")
         }
         when (listType) {
             1 -> out.append("</olist>")
@@ -140,23 +142,15 @@ object HtmlEx {
     }
 
     private fun inline(spanned: Spanned, start: Int, end: Int, out: StringBuilder) {
-        val text = spanned.toString()
         var i = start
         while (i < end) {
-            var next = end
-            val spans = spanned.getSpans(i, end, CharacterStyle::class.java)
-            for (span in spans) {
-                val s = spanned.getSpanStart(span)
-                val e = spanned.getSpanEnd(span)
-                if (s > i && s < next) next = s
-                if (e > i && e < next) next = e
-            }
-            for (span in spans) if (spanned.getSpanEnd(span) == i) out.append(closeTag(span))
-            out.append(escape(text.substring(i, next)))
-            if (next < end) {
-                val nxt = spanned.getSpans(next, next + 1, CharacterStyle::class.java)
-                for (span in nxt) if (spanned.getSpanStart(span) == next) out.append(openTag(span))
-            }
+            val next = spanned.nextSpanTransition(i, end, CharacterStyle::class.java)
+            val spans = spanned.getSpans(i, next, CharacterStyle::class.java)
+                .filter { spanned.getSpanStart(it) < next && spanned.getSpanEnd(it) > i }
+                .sortedWith(compareBy({ spanned.getSpanStart(it) }, { -spanned.getSpanEnd(it) }, { it.javaClass.name }))
+            spans.forEach { out.append(openTag(it)) }
+            out.append(escape(spanned.subSequence(i, next).toString()))
+            spans.asReversed().forEach { out.append(closeTag(it)) }
             i = next
         }
     }
@@ -170,8 +164,8 @@ object HtmlEx {
         }
         is UnderlineSpan -> "<u>"
         is StrikethroughSpan -> "<s>"
-        is URLSpan -> "<a href=\"${span.url}\">"
-        is ForegroundColorSpan -> "<font color=\"#${String.format("%06X", 0xFFFFFF and span.foregroundColor)}\">"
+        is URLSpan -> "<a href=\"${escape(span.url).replace("\"", "&quot;")}\">"
+        is ForegroundColorSpan -> "<font color=\"#${String.format("%06X", 0xFFFFFF and (if (span is DisplayColorSpan) span.original else span.foregroundColor))}\">"
         else -> ""
     }
 

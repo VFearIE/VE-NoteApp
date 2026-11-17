@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="rv3_alarm">Reminder</string>
+    <string name="rv3_loading">Loading reminder…</string>
+    <string name="rv3_slide">Slide to stop</string>
+    <string name="rv3_dismiss">Stop</string>
+    <string name="rv3_snooze">Snooze · 5 minutes</string>
+    <string name="rv3_mute">Silence</string>
+    <string name="rv3_snoozed">Snoozed for 5 minutes</string>
+    <string name="rv3_muted">Silenced, not dismissed</string>
+    <string name="rv3_command_failed">Could not send the action. Please try again.</string>
+</resources>

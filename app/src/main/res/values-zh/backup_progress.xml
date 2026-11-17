@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_progress_preparing">正在准备</string>
+    <string name="backup_progress_running">正在导入或导出</string>
+    <string name="backup_progress_success">操作完成</string>
+    <string name="backup_progress_failure">操作未完成</string>
+    <string name="backup_progress_preparing_detail">正在准备导入或导出任务…</string>
+    <string name="backup_progress_running_detail">正在处理笔记和附件，请稍候…</string>
+    <string name="backup_progress_success_detail">任务已成功完成。</string>
+    <string name="backup_progress_failure_detail">导入或导出未能完成。请检查所选文件、可用存储空间和访问权限后重试。</string>
+</resources>

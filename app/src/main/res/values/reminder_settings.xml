@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reminder_muted_setting">Mute reminder sound</string>
+    <string name="reminder_muted_setting_desc">Keep notifications and full-screen reminders. Vibration is controlled separately.</string>
+    <string name="reminder_vibration_setting">Reminder vibration</string>
+    <string name="reminder_vibration_setting_desc">Vibrate during reminders, even when reminder sound is muted.</string>
+    <string name="reminder_vibration_permission_desc">System-declared permission (read-only). Change reminder vibration in Settings.</string>
+    <string name="reminder_special_access">Special access</string>
+</resources>

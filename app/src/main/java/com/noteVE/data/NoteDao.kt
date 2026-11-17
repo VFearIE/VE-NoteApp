@@ -16,6 +16,25 @@ interface NoteDao {
     @Update
     suspend fun update(note: Note)
 
+    @Query("UPDATE notes SET lastOpenedAt = :at WHERE id = :id")
+    suspend fun touchLastOpened(id: Long, at: Long)
+
+    @Query("UPDATE notes SET pinned = :pinned WHERE id = :id")
+    suspend fun updatePinned(id: Long, pinned: Boolean)
+
+    @Query("UPDATE notes SET reminderAt = :at, repeatRule = :rule WHERE id = :id")
+    suspend fun updateReminder(id: Long, at: Long?, rule: String?): Int
+
+    @Query("UPDATE notes SET reminderAt = :at, repeatRule = :rule WHERE id = :id AND reminderAt = :expectedAt")
+    suspend fun compareAndSetReminder(id: Long, expectedAt: Long, at: Long?, rule: String?): Int
+
+    @Query("UPDATE notes SET title = :title, body = :body, plainText = :plainText, modifiedAt = :modifiedAt, imagePaths = :images, voiceRecords = :audios, filePaths = :files, labels = :labels, pinned = :pinned WHERE id = :id")
+    suspend fun updateContent(id: Long, title: String, body: String, plainText: String, modifiedAt: Long,
+        images: String, audios: String, files: String, labels: String, pinned: Boolean): Int
+
+    @Query("UPDATE notes SET imagePaths = :images, voiceRecords = :audios, filePaths = :files WHERE id = :id AND body = :expectedBody")
+    suspend fun repairDerived(id: Long, expectedBody: String, images: String, audios: String, files: String): Int
+
     @Delete
     suspend fun delete(note: Note)
 

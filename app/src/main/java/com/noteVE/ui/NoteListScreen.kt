@@ -1,5 +1,12 @@
 package com.noteVE.ui
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+
 import android.app.Application
 import android.content.Context
 import android.content.Intent
@@ -30,7 +37,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -60,6 +67,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.Spacer
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -91,32 +101,28 @@ fun NoteListScreen(
     var fabOpen by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Note?>(null) }
     var reminderTarget by remember { mutableStateOf<Note?>(null) }
-    var importNotice by remember { mutableStateOf<String?>(null) }
-    var importNoticeTitle by remember { mutableStateOf<String?>(null) }
+    val backupProgress: BackupProgressState = viewModel()
 
-    val resultReceiver = remember {
-        object : ResultReceiver(Handler(Looper.getMainLooper())) {
-            override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
-                when (resultCode) {
-                    BackupService.R_INVALID -> { importNoticeTitle = context.getString(R.string.op_failed); importNotice = context.getString(R.string.backup_invalid) }
-                    else -> Toast.makeText(context, resultData?.getString(BackupService.EXTRA_MSG) ?: "", Toast.LENGTH_SHORT).show()
-                }
-            }
+    fun startBackup(action: String, uri: Uri, noteId: Long = 0L) {
+        backupProgress.start(context) { receiver -> startSvc(context, action, uri, receiver, noteId) }
+    }
+
+    var pendingExportId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Long?>(null) }
+    val exportSingleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            val id = pendingExportId
+            if (id == null) backupProgress.fail()
+            else startBackup(BackupService.ACTION_EXPORT_SINGLE, uri, id)
         }
     }
-
-    var pendingExportId by remember { mutableStateOf<Long?>(null) }
-    val exportSingleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        uri?.let { u -> pendingExportId?.let { id -> startSvc(context, BackupService.ACTION_EXPORT_SINGLE, u, resultReceiver, id) } }
-    }
     val exportFullLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        uri?.let { u -> startSvc(context, BackupService.ACTION_EXPORT_FULL, u, resultReceiver, 0L) }
+        uri?.let { u -> startBackup(BackupService.ACTION_EXPORT_FULL, u) }
     }
     val importSingleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { u -> startSvc(context, BackupService.ACTION_IMPORT_SINGLE, u, resultReceiver, 0L) }
+        uri?.let { u -> startBackup(BackupService.ACTION_IMPORT_SINGLE, u) }
     }
     val importFullLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { u -> startSvc(context, BackupService.ACTION_IMPORT_FULL, u, resultReceiver, 0L) }
+        uri?.let { u -> startBackup(BackupService.ACTION_IMPORT_FULL, u) }
     }
 
     fun exportNote(note: Note) {
@@ -128,7 +134,8 @@ fun NoteListScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.notes)) },
+                    title = { Text(stringResource(R.string.notes), style = MaterialTheme.typography.headlineSmall) },
+                    colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                     actions = {
                         IconButton(onClick = { vm.toggleSearch() }) { Icon(painterResource(R.drawable.ic_action_search), stringResource(R.string.search_hint)) }
                         IconButton(onClick = { menuOpen = true }) { Icon(painterResource(R.drawable.ic_action_more), stringResource(R.string.more)) }
@@ -142,7 +149,7 @@ fun NoteListScreen(
                         }
                     }
                 )
-                if (searchVisible) {
+                AnimatedVisibility(visible = searchVisible, enter = fadeIn(tween(160)) + expandVertically(tween(200)), exit = fadeOut(tween(120)) + shrinkVertically(tween(180))) {
                     TextField(
                         value = query,
                         onValueChange = { vm.setQuery(it) },
@@ -161,14 +168,20 @@ fun NoteListScreen(
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent
                         ),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
             }
         },
         floatingActionButton = {
             Box {
-                FloatingActionButton(onClick = { fabOpen = true }, shape = MaterialTheme.shapes.large) { Icon(painterResource(R.drawable.ic_action_add), stringResource(R.string.new_note)) }
+                FloatingActionButton(
+                    onClick = { fabOpen = true },
+                    shape = MaterialTheme.shapes.large,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(2.dp, 2.dp, 2.dp, 2.dp)
+                ) { Icon(painterResource(R.drawable.ic_action_add), stringResource(R.string.new_note)) }
                 DropdownMenu(expanded = fabOpen, onDismissRequest = { fabOpen = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.create_note)) }, onClick = { fabOpen = false; onNewNote() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.import_single)) }, onClick = { fabOpen = false; importSingleLauncher.launch(arrayOf("application/octet-stream", "application/zip")) })
@@ -178,18 +191,36 @@ fun NoteListScreen(
     ) { padding ->
         if (notes.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.empty_notes), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.enterReveal(0).padding(24.dp)) {
+                    Box(
+                        Modifier.size(72.dp).clip(MaterialTheme.shapes.extraLarge)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(painterResource(if (query.isNotBlank()) R.drawable.ic_action_search else R.drawable.ic_note), null,
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    }
+                    Text(
+                        stringResource(R.string.empty_notes),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
             }
         } else {
             // 仅当列表中确实存在「未来的提醒」时才跑秒级计时器（否则 0 开销）
             // ★ 必须放在 LazyColumn 之外：LazyListScope 的 lambda 不是 @Composable 上下文
             val nowTick = rememberNowTicker(notes.any { it.reminderAt != null })
+            // 仅首屏错位入场；之后滚动回收的卡片直接显示，避免滚动时反复淡入
+            var initialReveal by remember { mutableStateOf(true) }
+            LaunchedEffect(Unit) { delay(700); initialReveal = false }
             LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(notes, key = { it.id }) { note ->
+                itemsIndexed(notes, key = { _, n -> n.id }) { index, note ->
                     NoteItem(
                         note,
                         now = nowTick,
@@ -198,13 +229,14 @@ fun NoteListScreen(
                         onReminder = { reminderTarget = note },
                         onExport = { exportNote(note) },
                         onDelete = { deleteTarget = note },
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier.animateItem().enterReveal(index, enabled = initialReveal && index < 8)
                     )
                 }
             }
         }
     }
 
+    BackupProgressDialog(backupProgress)
     deleteTarget?.let { note ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -225,14 +257,6 @@ fun NoteListScreen(
             note.reminderAt, note.repeatRule,
             { at, rule -> vm.updateReminder(note.id, at, rule); reminderTarget = null },
             { reminderTarget = null }
-        )
-    }
-    importNotice?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { importNotice = null; importNoticeTitle = null },
-            title = importNoticeTitle?.let { t -> { Text(t) } },
-            text = { Text(msg) },
-            confirmButton = { TextButton(onClick = { importNotice = null; importNoticeTitle = null }) { Text(stringResource(R.string.got_it)) } }
         )
     }
 }
@@ -271,27 +295,37 @@ private fun NoteItem(
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 0.dp)
     ) {
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 4.dp, top = 6.dp, bottom = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (note.pinned) {
+                    Box(
+                        Modifier.padding(end = 8.dp).size(22.dp).clip(MaterialTheme.shapes.extraSmall)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_note_pinned), stringResource(R.string.pin),
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
                 Text(
                     note.title.ifBlank { stringResource(R.string.untitled) },
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 17.sp),
+                    color = if (note.title.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f).padding(top = 10.dp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
-                )
-                if (note.pinned) Icon(
-                    painterResource(R.drawable.ic_note_pinned), stringResource(R.string.pin),
-                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)
                 )
                 Box {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
                             painterResource(R.drawable.ic_action_more), stringResource(R.string.more),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }, shape = MaterialTheme.shapes.medium) {
                         DropdownMenuItem(text = { Text(stringResource(if (note.pinned) R.string.unpin else R.string.pin)) }, onClick = { menuOpen = false; onPin() })
                         DropdownMenuItem(text = { Text(stringResource(R.string.reminder_item)) }, onClick = { menuOpen = false; onReminder() })
                         DropdownMenuItem(text = { Text(stringResource(R.string.export_note)) }, onClick = { menuOpen = false; onExport() })
@@ -302,40 +336,48 @@ private fun NoteItem(
             if (note.plainText.isNotBlank()) {
                 Text(
                     note.plainText, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp, end = 8.dp)
+                    modifier = Modifier.padding(end = 14.dp)
                 )
             }
-            note.reminderAt?.let { at ->
-                val active = at > now
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_reminder), null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        if (active) stringResource(R.string.next_reminder_in, formatCountdown(at - now))
-                        else stringResource(R.string.reminder_completed),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(start = 5.dp)
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 12.dp, end = 14.dp)
+            ) {
+                Text(
+                    formatTime(note.modifiedAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                note.reminderAt?.let { at ->
+                    val active = at > now
+                    Spacer(Modifier.weight(1f))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .clip(MaterialTheme.shapes.extraLarge)
+                            .background(
+                                if (active) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHighest
+                            )
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
+                    ) {
+                        val fg = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        Icon(painterResource(R.drawable.ic_reminder), null, tint = fg, modifier = Modifier.size(12.dp))
+                        Text(
+                            if (active) stringResource(R.string.next_reminder_in, formatCountdown(at - now))
+                            else stringResource(R.string.reminder_completed),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = fg, maxLines = 1,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
                 }
             }
-            Text(
-                formatTime(note.modifiedAt),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 8.dp)
-            )
         }
     }
 }

@@ -27,6 +27,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.drawBehind
 
 /**
  * 全应用统一的设计组件 —— 「iOS Settings 分组列表」风格。
@@ -56,13 +65,13 @@ fun IconBlock(
     Box(
         Modifier
             .size(size)
-            .background(blockColor, RoundedCornerShape(8.dp)),
+            .background(blockColor.copy(alpha = 0.14f), RoundedCornerShape(9.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painterResource(painterRes),
             contentDescription = null,
-            tint = Color.White,
+            tint = blockColor,
             modifier = Modifier.size(18.dp)
         )
     }
@@ -80,15 +89,15 @@ fun SettingsGroup(
         header?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 8.dp)
             )
         }
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow),
             content = content
         )
@@ -97,11 +106,11 @@ fun SettingsGroup(
                 it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 32.dp, end = 32.dp, top = 8.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 2.dp),
                 lineHeight = 16.sp
             )
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
     }
 }
 
@@ -131,6 +140,8 @@ fun SettingsRow(
     blockColor: Color? = null,
     onClick: (() -> Unit)? = null,
     showDivider: Boolean = true,
+    enabled: Boolean = true,
+    clickWhole: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Column {
@@ -139,7 +150,9 @@ fun SettingsRow(
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .then(
-                    if (onClick != null) Modifier.clickable { onClick() } else Modifier
+                    if (onClick != null) Modifier.clickable { onClick() }
+                    else if (clickWhole != null) Modifier.clickable(enabled = enabled) { clickWhole() }
+                    else Modifier
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -156,7 +169,8 @@ fun SettingsRow(
                 Text(
                     title,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     maxLines = 2
                 )
                 subtitle?.let {
@@ -182,7 +196,7 @@ fun SettingsRow(
 fun SettingsSwitchRow(
     iconRes: Int,
     title: String,
-    subtitle: String,
+    subtitle: String?,
     checked: Boolean,
     onToggle: () -> Unit,
     blockColor: Color? = null,
@@ -196,8 +210,125 @@ fun SettingsSwitchRow(
         blockColor = blockColor,
         onClick = null,
         showDivider = showDivider,
+        enabled = enabled,
+        clickWhole = if (enabled) onToggle else null,
         trailing = {
             Switch(checked = checked, onCheckedChange = { onToggle() }, enabled = enabled)
         }
     )
+}
+
+
+/** 导航行：尾部 chevron，整行可点。 */
+@Composable
+fun SettingsNavRow(
+    iconRes: Int,
+    title: String,
+    subtitle: String? = null,
+    blockColor: Color? = null,
+    showDivider: Boolean = true,
+    onClick: () -> Unit,
+) {
+    SettingsRow(
+        iconRes = iconRes, title = title, subtitle = subtitle, blockColor = blockColor,
+        onClick = onClick, showDivider = showDivider,
+        trailing = {
+            Icon(
+                painterResource(com.noteVE.R.drawable.ic_chevron_right), null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    )
+}
+
+/**
+ * 卡内分段选择：标题行 + 胶囊分段。选中块用 primary 色滑块（spring 位移，仅 graphicsLayer/offset 绘制）。
+ */
+@Composable
+fun SettingsChoiceRow(
+    iconRes: Int,
+    title: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    blockColor: Color? = null,
+    showDivider: Boolean = true,
+) {
+    Column {
+        Column(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconBlock(iconRes, blockColor ?: MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(14.dp))
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            }
+            Spacer(Modifier.height(10.dp))
+            SegmentedPill(options, selected, onSelect)
+        }
+        if (showDivider) RowDivider()
+    }
+}
+
+@Composable
+fun SegmentedPill(
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val idx = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+    val pos by androidx.compose.animation.core.animateFloatAsState(idx.toFloat(), Motion.settle(), label = "seg")
+    val selColor = MaterialTheme.colorScheme.primaryContainer
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 42.dp)
+            .clip(RoundedCornerShape(21.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+            .padding(3.dp)
+    ) {
+        val n = options.size
+        Box(
+            Modifier.matchParentSize().drawBehind {
+                val w = size.width / n
+                drawRoundRect(
+                    color = selColor,
+                    topLeft = androidx.compose.ui.geometry.Offset(w * pos, 0f),
+                    size = androidx.compose.ui.geometry.Size(w, size.height),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(18.dp.toPx())
+                )
+            }
+        )
+        Row(Modifier.fillMaxWidth().heightIn(min = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+            options.forEachIndexed { i, (value, label) ->
+                val on = i == idx
+                val c by androidx.compose.animation.animateColorAsState(
+                    if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tween(180), label = "segc"
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .selectable(selected = on, role = Role.Tab) { onSelect(value) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, style = MaterialTheme.typography.labelLarge, color = c, maxLines = 2,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp))
+                }
+            }
+        }
+    }
+}
+
+/** 按压缩放（0.97 / 110ms），用于可点击卡片。 */
+@Composable
+fun rememberPressScale(interaction: androidx.compose.foundation.interaction.InteractionSource): Float {
+    val pressed by interaction.collectIsPressedAsState()
+    val s by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.97f else 1f, tween(110), label = "press"
+    )
+    return s
 }

@@ -27,11 +27,18 @@ class AudioRecorder {
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             setOutputFile(file.absolutePath)
         }
-        r.prepare()
-        r.start()
-        recorder = r
-        started = true
-        isPaused = false
+        try {
+            r.prepare()
+            r.start()
+            recorder = r
+            started = true
+            isPaused = false
+        } catch (failure: Exception) {
+            runCatching { r.reset() }
+            runCatching { r.release() }
+            file.delete()
+            throw failure
+        }
     }
 
     /** 松手暂停，保留录音以便继续。 */

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reminder_muted_setting">提醒静音</string>
+    <string name="reminder_muted_setting_desc">不播放提醒声音，保留通知与全屏提醒；震动由独立开关控制。</string>
+    <string name="reminder_vibration_setting">提醒震动</string>
+    <string name="reminder_vibration_setting_desc">提醒时震动；开启提醒静音后仍按此开关执行。</string>
+    <string name="reminder_vibration_permission_desc">系统声明权限（只读）；请在设置中调整提醒震动。</string>
+    <string name="reminder_special_access">特殊权限</string>
+</resources>

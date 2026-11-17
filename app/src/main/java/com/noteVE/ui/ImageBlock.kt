@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -87,11 +88,17 @@ fun ImageBlock(file: File, onLongPress: () -> Unit) {
 }
 
 /** 按屏宽 ×2 降采样解码。 */
+private val bitmapCache = object : LruCache<String, Bitmap>(8 * 1024) {
+    override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount / 1024
+}
+
 @Composable
 private fun rememberBlockBitmap(file: File, targetWidthPx: Int): Bitmap? {
-    return produceState<Bitmap?>(initialValue = null, file, targetWidthPx) {
-        value = withContext(Dispatchers.IO) {
-            ImageDecoder.decode(file, targetWidthPx)
+    val key = file.absolutePath + ":" + targetWidthPx
+    return produceState<Bitmap?>(initialValue = bitmapCache.get(key), file, targetWidthPx) {
+        if (value == null) {
+            value = withContext(Dispatchers.IO) { ImageDecoder.decode(file, targetWidthPx) }
+            value?.let { bitmapCache.put(key, it) }
         }
     }.value
 }

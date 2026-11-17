@@ -100,12 +100,12 @@ object ReminderTicker {
     private suspend fun fire(context: Context, note: Note) {
         Log.i(TAG, "计时器触发提醒 note=${note.id}")
         // 与服务内部去重配合：同一条已在提醒中会被忽略
-        val svc = Intent(context, ReminderService::class.java).apply {
-            putExtra(ReminderService.EXTRA_NOTE_ID, note.id)
-        }
-        runCatching { ContextCompat.startForegroundService(context, svc) }
-            .onFailure { Log.w(TAG, "计时器启动服务失败(应用可能在后台): $it") }
-        delay(600)
+        val at = note.reminderAt ?: return
+        val svc = ReminderService.commandIntent(context, ReminderService.ACTION_FIRE, note.id, at)
+        val launched = runCatching { ContextCompat.startForegroundService(context, svc) }
+            .onFailure { Log.w(TAG, "计时器启动服务失败(应用可能在后台): $it") }.isSuccess
+        // Avoid a 600ms denied-FGS loop. AlarmManager remains the primary wake-up path.
+        delay(if (launched) 2_000 else 60_000)
     }
 
     private fun registerTimeChangeReceiver(context: Context) {

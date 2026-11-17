@@ -10,7 +10,7 @@ import androidx.core.content.ContextCompat
  * 提醒广播入口（**仅 API 26 以下的兜底**）。
  *
  * API 26+ 走 [ReminderScheduler] 的 `PendingIntent.getForegroundService` ——
- * 由系统直接拉起前台服务，不受「后台不能启动前台服务」限制。
+ * 由系统直接拉起前台服务；仍受平台精确闹钟豁免与后台启动规则约束。
  * 低版本没有该 API，只能经广播中转。
  *
  * 逻辑极简：收到广播后拉起 [ReminderService]，其余全部由服务自己处理
@@ -21,11 +21,10 @@ class ReminderTrigger : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION_REMIND) return
         val noteId = intent.getLongExtra(EXTRA_NOTE_ID, -1L)
-        if (noteId <= 0) return
+        val at = intent.getLongExtra(ReminderService.EXTRA_EXPECTED_AT, -1)
+        if (noteId <= 0 || at < 0) return
         Log.i("NoteReminder", "广播触发(低版本兜底) noteId=$noteId")
-        val svc = Intent(context, ReminderService::class.java).apply {
-            putExtra(ReminderService.EXTRA_NOTE_ID, noteId)
-        }
+        val svc = ReminderService.commandIntent(context, ReminderService.ACTION_FIRE, noteId, at)
         runCatching { ContextCompat.startForegroundService(context, svc) }
             .onFailure { Log.w("NoteReminder", "拉起服务失败: $it") }
     }

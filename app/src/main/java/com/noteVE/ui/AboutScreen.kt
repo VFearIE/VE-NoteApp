@@ -14,6 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,13 +46,19 @@ import com.noteVE.R
 /**
  * 关于页（二级页面）。
  *
- * 内容：应用图标 → 名称 → 版本+版本类型 → 作者 → 联系方式 → 发行日期 → 项目地址 → 致谢
+ * 卡片式身份信息、手动更新、项目地址及原有开源许可；不自动联网。
  * 深色模式与中英双语均支持；项目地址支持长按复制。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    var showLicenses by rememberSaveable { mutableStateOf(false) }
+    if (showLicenses) {
+        androidx.activity.compose.BackHandler { showLicenses = false }
+        LicenseScreen(onBack = { showLicenses = false })
+        return
+    }
 
     // 版本类型随 flavor 变化：root → 正式版；platform → 平台定制版
     val editionRes = if (BuildConfig.FLAVOR == "platform") {
@@ -78,11 +91,14 @@ fun AboutScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(16.dp))
-
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // 应用图标
             Image(
                 painter = painterResource(R.drawable.ic_app_logo),
@@ -113,13 +129,22 @@ fun AboutScreen(onBack: () -> Unit) {
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(28.dp))
+                }
+            }
 
-            // 作者 / 联系方式 / 发行日期
-            InfoLine(stringResource(R.string.about_author), "VFearIE")
-            InfoLine(stringResource(R.string.about_release_date), "2026-10-02")
-
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
+            UpdateSection()
+            Spacer(Modifier.height(16.dp))
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                    InfoLine(stringResource(R.string.about_author), "VFearIE")
+                    InfoLine(stringResource(R.string.about_release_date), "2026-10-02")
+                    TextButton(onClick = { showLicenses = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.open_source_licenses))
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
 
             // GitHub 地址（长按复制）
             Text(
@@ -131,7 +156,7 @@ fun AboutScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .clip(MaterialTheme.shapes.small)
                     .combinedClickable(
-                        onClick = { },
+                        onClick = { openUpdateLink(context, "https://$github") },
                         onLongClick = {
                             val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                                     as? android.content.ClipboardManager

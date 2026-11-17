@@ -43,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.noteVE.R
+import androidx.compose.ui.graphics.Color
 import com.noteVE.domain.Settings
 
 /**
@@ -60,6 +61,8 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
     val sortReverse by Settings.sortReverse.collectAsState()
     val warnPerm by Settings.warnPermissionMissing.collectAsState()
     val dynamicColor by Settings.dynamicColor.collectAsState()
+    val reminderMuted by Settings.reminderMuted.collectAsState()
+    val reminderVibration by Settings.reminderVibrationEnabled.collectAsState()
 
     Scaffold(
         topBar = {
@@ -81,7 +84,6 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
         ) {
             // 分段错位入场（Vector 式克制动画）
             var visible by remember { mutableStateOf(false) }
@@ -96,189 +98,116 @@ fun SettingsScreen(onBack: () -> Unit, onPermissions: () -> Unit) {
                     Spacer(Modifier.height(4.dp))
 
                     // ---------- 外观 ----------
-                    SectionTitle(stringResource(R.string.settings_appearance))
-
-                    ChoiceRow(
-                        title = stringResource(R.string.language),
-                        options = listOf(
-                            Settings.LANG_SYSTEM to stringResource(R.string.follow_system),
-                            Settings.LANG_ZH to "中文",
-                            Settings.LANG_EN to "English"
-                        ),
-                        selected = language,
-                        onSelect = { v ->
-                            if (v != Settings.language.value) {
-                                Settings.setLanguage(v)
-                                // 立即重建界面以套用新语言（等价于无缝刷新，非重启应用）
-                                (context as? android.app.Activity)?.recreate()
+                    SettingsGroup(header = stringResource(R.string.settings_appearance), modifier = Modifier.enterReveal(0)) {
+                        SettingsChoiceRow(
+                            iconRes = R.drawable.ic_set_language,
+                            title = stringResource(R.string.language),
+                            options = listOf(
+                                Settings.LANG_SYSTEM to stringResource(R.string.follow_system),
+                                Settings.LANG_ZH to "中文",
+                                Settings.LANG_EN to "English"
+                            ),
+                            selected = language,
+                            onSelect = { v ->
+                                if (v != Settings.language.value) {
+                                    Settings.setLanguage(v)
+                                    // 立即重建界面以套用新语言（等价于无缝刷新，非重启应用）
+                                    (context as? android.app.Activity)?.recreate()
+                                }
                             }
-                        }
-                    )
-
-                    ChoiceRow(
-                        title = stringResource(R.string.theme),
-                        options = listOf(
-                            Settings.THEME_SYSTEM to stringResource(R.string.follow_system),
-                            Settings.THEME_LIGHT to stringResource(R.string.light),
-                            Settings.THEME_DARK to stringResource(R.string.dark)
-                        ),
-                        selected = theme,
-                        onSelect = { Settings.setTheme(it) }
-                    )
-
-                    // ★ 动态取色在本项目**所有受支持版本**都可用：
-                    //   Android 12+ 走系统原生方案；更低版本由应用内本地生成
-                    //   （见 ui/theme/DynamicColorsCompat）。故不再按 SDK 版本禁用开关。
-                    SwitchRow(
-                        title = stringResource(R.string.dynamic_color),
-                        subtitle = stringResource(R.string.dynamic_color_desc),
-                        checked = dynamicColor,
-                        onCheckedChange = { Settings.setDynamicColor(it) }
-                    )
-
-                    Spacer(Modifier.height(20.dp))
+                        )
+                        SettingsChoiceRow(
+                            iconRes = R.drawable.ic_set_theme,
+                            title = stringResource(R.string.theme),
+                            options = listOf(
+                                Settings.THEME_SYSTEM to stringResource(R.string.follow_system),
+                                Settings.THEME_LIGHT to stringResource(R.string.light),
+                                Settings.THEME_DARK to stringResource(R.string.dark)
+                            ),
+                            selected = theme,
+                            onSelect = { Settings.setTheme(it) }
+                        )
+                        // ★ 动态取色在所有受支持版本都可用（低版本由应用内本地生成）
+                        SettingsSwitchRow(
+                            iconRes = R.drawable.ic_set_palette,
+                            title = stringResource(R.string.dynamic_color),
+                            subtitle = stringResource(R.string.dynamic_color_desc),
+                            checked = dynamicColor,
+                            onToggle = { Settings.setDynamicColor(!dynamicColor) },
+                            showDivider = false
+                        )
+                    }
 
                     // ---------- 通用 ----------
-                    SectionTitle(stringResource(R.string.settings_general))
+                    SettingsGroup(header = stringResource(R.string.settings_general), modifier = Modifier.enterReveal(1)) {
+                        SettingsChoiceRow(
+                            iconRes = R.drawable.ic_set_sort,
+                            title = stringResource(R.string.sort_by),
+                            options = listOf(
+                                Settings.SORT_NAME to stringResource(R.string.sort_name),
+                                Settings.SORT_LAST_OPENED to stringResource(R.string.sort_last_opened)
+                            ),
+                            selected = sortBy,
+                            onSelect = { Settings.setSort(it, Settings.sortReverse.value) }
+                        )
+                        SettingsSwitchRow(
+                            iconRes = R.drawable.ic_set_reverse,
+                            title = stringResource(R.string.reverse_sort),
+                            subtitle = null,
+                            checked = sortReverse,
+                            onToggle = { Settings.setSort(Settings.sortBy.value, !sortReverse) },
+                            showDivider = false
+                        )
+                    }
 
-                    ChoiceRow(
-                        title = stringResource(R.string.sort_by),
-                        options = listOf(
-                            Settings.SORT_NAME to stringResource(R.string.sort_name),
-                            Settings.SORT_LAST_OPENED to stringResource(R.string.sort_last_opened)
-                        ),
-                        selected = sortBy,
-                        onSelect = { Settings.setSort(it, Settings.sortReverse.value) }
-                    )
+                    // ---------- 提醒（静音与震动独立、持久） ----------
+                    SettingsGroup(header = stringResource(R.string.reminder_item), modifier = Modifier.enterReveal(2)) {
+                        SettingsSwitchRow(
+                            iconRes = R.drawable.ic_perm_notification,
+                            title = stringResource(R.string.reminder_muted_setting),
+                            subtitle = stringResource(R.string.reminder_muted_setting_desc),
+                            checked = reminderMuted,
+                            onToggle = { Settings.setReminderMuted(!reminderMuted) },
+                            blockColor = Color(0xFFE5484D)
+                        )
+                        SettingsSwitchRow(
+                            iconRes = R.drawable.ic_perm_vibrate,
+                            title = stringResource(R.string.reminder_vibration_setting),
+                            subtitle = stringResource(R.string.reminder_vibration_setting_desc),
+                            checked = reminderVibration,
+                            onToggle = { Settings.setReminderVibrationEnabled(!reminderVibration) },
+                            blockColor = Color(0xFFFF9500),
+                            showDivider = false
+                        )
+                    }
 
-                    SwitchRow(
-                        title = stringResource(R.string.reverse_sort),
-                        checked = sortReverse,
-                        onCheckedChange = { Settings.setSort(Settings.sortBy.value, it) }
-                    )
+                    // ---------- 行为 + 授权入口 ----------
+                    SettingsGroup(
+                        header = stringResource(R.string.settings_behavior),
+                        footer = stringResource(R.string.perm_desc),
+                        modifier = Modifier.enterReveal(3)
+                    ) {
+                        SettingsSwitchRow(
+                            iconRes = R.drawable.ic_set_warn,
+                            title = stringResource(R.string.warn_permission),
+                            subtitle = null,
+                            checked = warnPerm,
+                            onToggle = { Settings.setWarnPermissionMissing(!warnPerm) },
+                            blockColor = Color(0xFFF5A524)
+                        )
+                        SettingsNavRow(
+                            iconRes = R.drawable.ic_perm_system,
+                            title = stringResource(R.string.perm_section),
+                            blockColor = Color(0xFF34C759),
+                            showDivider = false,
+                            onClick = onPermissions
+                        )
+                    }
 
-                    Spacer(Modifier.height(20.dp))
-
-                    // ---------- 行为 ----------
-                    SectionTitle(stringResource(R.string.settings_behavior))
-
-                    SwitchRow(
-                        title = stringResource(R.string.warn_permission),
-                        checked = warnPerm,
-                        onCheckedChange = { Settings.setWarnPermissionMissing(it) }
-                    )
-
-                    Spacer(Modifier.height(20.dp))
-
-                    // ---------- 授权相关（三级页面入口） ----------
-                    SectionTitle(stringResource(R.string.perm_section))
-                    NavRow(
-                        title = stringResource(R.string.perm_section),
-                        subtitle = stringResource(R.string.perm_desc),
-                        onClick = onPermissions
-                    )
-
-                    Spacer(Modifier.height(32.dp))
+                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
     }
 }
 
-@Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 6.dp)
-    )
-}
-
-/** 分段选择：2–3 个互斥选项，点选即生效。 */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ChoiceRow(
-    title: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    onSelect: (String) -> Unit
-) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            options.forEachIndexed { index, (value, label) ->
-                SegmentedButton(
-                    selected = selected == value,
-                    onClick = { onSelect(value) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                    colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                ) { Text(label, maxLines = 1) }
-            }
-        }
-    }
-}
-
-/** 开关项：标题（+可选副标题）与开关同排，整行可点。 */
-@Composable
-private fun SwitchRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    subtitle: String? = null,
-    enabled: Boolean = true
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-    }
-}
-
-/** 带右箭头（drawable 绘制）的导航行，用于进入三级页面。 */
-@Composable
-private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Icon(
-            painterResource(R.drawable.ic_chevron_right),
-            null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
-    }
-}

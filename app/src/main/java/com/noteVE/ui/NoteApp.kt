@@ -22,7 +22,7 @@ import com.noteVE.domain.Settings
 import com.noteVE.ui.theme.NoteAppTheme
 
 @Composable
-fun NoteApp(initialNoteId: Long?) {
+fun NoteApp(initialNoteId: Long?, launchSequence: Long = 0L) {
     val theme by Settings.theme.collectAsState()
     val dynamicColorSetting by Settings.dynamicColor.collectAsState()
     val darkTheme = when (theme) {
@@ -32,7 +32,7 @@ fun NoteApp(initialNoteId: Long?) {
     }
     NoteAppTheme(darkTheme = darkTheme, dynamicColor = dynamicColorSetting) {
         // 启动动画：先播放 VE 标志，结束后进入主界面
-        var showSplash by remember { mutableStateOf(true) }
+        var showSplash by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialNoteId == null) }
         if (showSplash) {
             SplashScreen(onFinished = { showSplash = false })
             return@NoteAppTheme
@@ -43,16 +43,16 @@ fun NoteApp(initialNoteId: Long?) {
             navController = nav,
             startDestination = "list",
             enterTransition = {
-                slideInHorizontally(animationSpec = tween(240)) { it / 5 } + fadeIn(tween(200))
+                slideInHorizontally(animationSpec = tween(300, easing = Motion.Emphasized)) { it / 5 } + fadeIn(tween(200))
             },
             exitTransition = {
-                slideOutHorizontally(animationSpec = tween(200)) { -it / 8 } + fadeOut(tween(160))
+                slideOutHorizontally(animationSpec = tween(240, easing = Motion.Emphasized)) { -it / 8 } + fadeOut(tween(160))
             },
             popEnterTransition = {
-                slideInHorizontally(animationSpec = tween(240)) { -it / 8 } + fadeIn(tween(200))
+                slideInHorizontally(animationSpec = tween(300, easing = Motion.Emphasized)) { -it / 8 } + fadeIn(tween(200))
             },
             popExitTransition = {
-                slideOutHorizontally(animationSpec = tween(200)) { it / 5 } + fadeOut(tween(160))
+                slideOutHorizontally(animationSpec = tween(240, easing = Motion.Emphasized)) { it / 5 } + fadeOut(tween(160))
             }
         ) {
             composable("list") {
@@ -100,7 +100,7 @@ fun NoteApp(initialNoteId: Long?) {
                 )
             }
         }
-        LaunchedEffect(initialNoteId) {
+        LaunchedEffect(initialNoteId, launchSequence) {
             if (initialNoteId != null) nav.navigate("edit/$initialNoteId")
         }
     }

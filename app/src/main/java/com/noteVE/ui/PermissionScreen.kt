@@ -20,8 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,45 +36,49 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.noteVE.R
 import com.noteVE.domain.Permissions
-import kotlinx.coroutines.delay
 
 /**
  * 授权相关（三级页面）。
  *
  * 按 iOS Settings「inset grouped」风格实现：
  *  - 分组（Section：标题 + 脚注）+ 行（Row：图标 + 标题 + 副标题 + 控件）
- *  - **每秒轮询**状态，从系统设置返回后自动刷新，无需手动重进
+ *  - 在 ON_RESUME 刷新状态，从系统设置返回后自动刷新，无需手动重进
  *  - 每行左侧 drawable 图标，右侧胶囊开关；开关状态 = 真实授权状态
  *  - 点开关 → 申请（运行时权限弹系统框；特殊权限跳对应系统页面）
  *
- * 正常情况下 priv-app 已静默授予全部运行时权限，此处仅作冗余兜底。
+ * 所有状态以实际系统查询为准，不因 priv-app/platform 身份放宽。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var isPriv by remember { mutableStateOf(Permissions.isPrivApp(context)) }
     var notif by remember { mutableStateOf(Permissions.notificationsEnabled(context)) }
     var mic by remember { mutableStateOf(Permissions.runtimeGranted(context, android.Manifest.permission.RECORD_AUDIO)) }
     var storage by remember { mutableStateOf(storageGranted(context)) }
     var vibrate by remember { mutableStateOf(Permissions.runtimeGranted(context, android.Manifest.permission.VIBRATE)) }
+    var fullScreen by remember { mutableStateOf(Permissions.fullScreenIntentGranted(context)) }
     var exact by remember { mutableStateOf(Permissions.exactAlarmGranted(context)) }
 
-    // 每秒轮询：从系统设置返回后状态自动刷新
-    LaunchedEffect(Unit) {
-        while (true) {
-            isPriv = Permissions.isPrivApp(context)
-            notif = Permissions.notificationsEnabled(context)
-            mic = Permissions.runtimeGranted(context, android.Manifest.permission.RECORD_AUDIO)
-            storage = storageGranted(context)
-            vibrate = Permissions.runtimeGranted(context, android.Manifest.permission.VIBRATE)
-            exact = Permissions.exactAlarmGranted(context)
-
-
-            delay(1000)
+    fun refresh() {
+        isPriv = Permissions.isPrivApp(context)
+        notif = Permissions.notificationsEnabled(context)
+        mic = Permissions.runtimeGranted(context, android.Manifest.permission.RECORD_AUDIO)
+        storage = storageGranted(context)
+        vibrate = Permissions.runtimeGranted(context, android.Manifest.permission.VIBRATE)
+        exact = Permissions.exactAlarmGranted(context)
+        fullScreen = Permissions.fullScreenIntentGranted(context)
+    }
+    DisposableEffect(lifecycleOwner) {
+        refresh()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refresh()
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -94,7 +101,7 @@ fun PermissionScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .padding(vertical = 4.dp)
         ) {
             // ---------- 系统应用状态 ----------
             PermSection(
@@ -113,14 +120,14 @@ fun PermissionScreen(onBack: () -> Unit) {
             }
 
             // ---------- 运行时权限 ----------
-            PermSection(header = stringResource(R.string.perm_section)) {
+            PermSection(index = 1, header = stringResource(R.string.perm_section)) {
                 PermRow(
                     icon = R.drawable.ic_perm_notification,
                     tint = Color(0xFFE5484D),
                     title = stringResource(R.string.perm_notification),
                     subtitle = stringResource(R.string.perm_notification_desc),
                     checked = notif,
-                    onToggle = { requestRuntime(activity, listOf(android.Manifest.permission.POST_NOTIFICATIONS)) }
+                    onToggle = { activity?.let { Permissions.requestNotifications(it) } }
                 )
                 PermRow(
                     icon = R.drawable.ic_perm_mic,
@@ -142,16 +149,31 @@ fun PermissionScreen(onBack: () -> Unit) {
                     icon = R.drawable.ic_perm_vibrate,
                     tint = Color(0xFFFF9500),
                     title = stringResource(R.string.perm_vibrate),
-                    subtitle = stringResource(R.string.perm_vibrate_desc),
+                    subtitle = stringResource(R.string.reminder_vibration_permission_desc),
                     checked = vibrate,
-                    onToggle = { requestRuntime(activity, listOf(android.Manifest.permission.VIBRATE)) }
+                    locked = true,
+                    onToggle = { }
                 )
+            }
+
+            PermSection(index = 2, header = stringResource(R.string.reminder_special_access)) {
+                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    PermRow(
+                        icon = R.drawable.ic_perm_notification,
+                        title = stringResource(R.string.fullscreen_reminder_permission),
+                        subtitle = stringResource(R.string.fullscreen_reminder_permission_desc),
+                        checked = fullScreen,
+                        onToggle = { Permissions.requestFullScreenIntent(context) }
+                    )
+                }
                 PermRow(
                     icon = R.drawable.ic_perm_alarm,
                     tint = Color(0xFF34C759),
                     title = stringResource(R.string.perm_exact_alarm),
                     subtitle = stringResource(R.string.perm_exact_alarm_desc),
                     checked = exact,
+                    locked = android.os.Build.VERSION.SDK_INT < 31,
+                    last = true,
                     onToggle = { activity?.let { Permissions.requestExactAlarm(it) } }
                 )
             }
@@ -167,12 +189,13 @@ fun PermissionScreen(onBack: () -> Unit) {
  */
 @Composable
 private fun PermSection(
+    index: Int = 0,
     header: String,
     footer: String? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     // 统一样式：委托给公共组件（见 DesignKit.kt）
-    SettingsGroup(header = header, footer = footer, content = content)
+    SettingsGroup(header = header, footer = footer, modifier = Modifier.enterReveal(index), content = content)
 }
 
 /**

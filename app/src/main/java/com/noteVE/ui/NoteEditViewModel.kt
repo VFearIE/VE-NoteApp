@@ -12,13 +12,32 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /** 编辑页 ViewModel：以块列表为草稿状态。 */
 class NoteEditViewModel(app: Application, private val noteId: Long?) : AndroidViewModel(app) {
 
     private val repo = NoteRepository(app)
-    private val saving = AtomicBoolean(false)
+    private val saving = Mutex()
+    private var currentId: Long? = noteId
+    private var deleted = false
+    private var reminderDirty = false
+    private var autoSave: Job? = null
+    fun flush() {
+        if (!_loaded.value || deleted) return
+        viewModelScope.launch { runCatching { save() } }
+    }
+
+    private fun changed() {
+        if (!_loaded.value || deleted) return
+        autoSave?.cancel()
+        autoSave = viewModelScope.launch { delay(600); runCatching { save() } }
+    }
 
     private val _loaded = MutableStateFlow(false)
     val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
@@ -81,21 +100,25 @@ class NoteEditViewModel(app: Application, private val noteId: Long?) : AndroidVi
         }
     }
 
-    fun updateTitle(t: String) { _title.value = t }
+    fun updateTitle(t: String) { if (_readOnly.value) return; _title.value = t; changed() }
     fun setInsertIndex(i: Int) { _insertIndex.value = i }
 
     fun updateTextBlock(index: Int, html: String) {
+        if (_readOnly.value) return
         val list = _blocks.value.toMutableList()
         if (index in list.indices && list[index] is Block.Text) {
             list[index] = Block.Text(html)
             _blocks.value = list
+            changed()
         }
     }
 
     fun insertBlock(index: Int, block: Block) {
+        if (_readOnly.value) return
         // 算法在 BlockOps（纯函数，可单测）；此处只负责状态承载
         val list = BlockOps.insertAt(_blocks.value, index, block)
         _blocks.value = list
+            changed()
         _focusRequest.value = list.size - 1
     }
 
@@ -105,32 +128,30 @@ class NoteEditViewModel(app: Application, private val noteId: Long?) : AndroidVi
      * 文档流中的行内原子节点，插入位置来自当前光标，而非固定置顶/置底。
      */
     fun splitAndInsert(index: Int, beforeHtml: String, block: Block, afterHtml: String) {
+        if (_readOnly.value) return
         val before = _blocks.value
         val list = BlockOps.splitAndInsert(before, index, beforeHtml, block, afterHtml)
         if (list === before) return          // 索引非法/非文字块 → 未变更
         _blocks.value = list
+            changed()
         // 光标移到块后方的文字块，便于回车换行/继续输入
         _focusRequest.value = index + 2
     }
 
     fun removeBlock(index: Int) {
+        if (_readOnly.value) return
         val cur = _blocks.value
-        // 先取被删块以便清理附件（算法仍交给 BlockOps）
-        cur.getOrNull(index)?.let { b ->
-            when (b) {
-                is Block.Image -> repo.deleteImage(b.path)
-                is Block.Audio -> repo.deleteVoice(b.path)
-                is Block.File -> repo.deleteFile(b.path)
-                else -> {}
-            }
-        }
         _blocks.value = BlockOps.removeAt(cur, index)
+        changed()
     }
 
     fun updateReminder(at: Long?, rule: String?) {
+        if (_readOnly.value) return
+        reminderDirty = true
         _reminderAt.value = at; _repeatRule.value = rule
+        viewModelScope.launch { runCatching { save() } }
     }
-    fun updatePinned(v: Boolean) { _pinned.value = v }
+    fun updatePinned(v: Boolean) { _pinned.value = v; changed() }
 
     // ---- 附件 ----
 
@@ -143,26 +164,32 @@ class NoteEditViewModel(app: Application, private val noteId: Long?) : AndroidVi
 
     /** 重命名文件块（保留扩展名，保持块路径同步）。[baseName] 不含扩展名。 */
     fun renameFile(oldName: String, baseName: String) {
+        if (_readOnly.value) return
         val newName = repo.renameFile(oldName, baseName)
         if (newName == oldName) return
         val list = _blocks.value.map { b ->
             if (b is Block.File && b.path == oldName) Block.File(newName) else b
         }
         _blocks.value = list
+            changed()
     }
     fun createTempRecordingFile(): java.io.File = repo.createTempRecordingFile()
     fun finalizeRecording(temp: java.io.File, name: String): String = repo.finalizeRecording(temp, name)
     fun renameVoice(oldName: String, newName: String) {
+        if (_readOnly.value) return
         val new = repo.renameVoiceFile(oldName, newName)
         val list = _blocks.value.map { b -> if (b is Block.Audio && b.path == oldName) Block.Audio(new) else b }
         _blocks.value = list
+            changed()
     }
 
     /** 复制图片到附件目录，返回文件名（由调用方插入块）。 */
     suspend fun importImage(uri: Uri): String = repo.importImage(uri)
 
-    fun delete() = viewModelScope.launch {
-        val id = noteId
+    suspend fun delete() = saving.withLock {
+        deleted = true
+        autoSave?.cancel()
+        val id = currentId
         if (id != null && id != 0L) {
             repo.getById(id)?.let { repo.delete(it) }
         } else {
@@ -178,15 +205,22 @@ class NoteEditViewModel(app: Application, private val noteId: Long?) : AndroidVi
         }
     }
 
-    suspend fun save(): Long {
-        if (!saving.compareAndSet(false, true)) return noteId ?: 0L
-        return try {
-            repo.saveNote(
-                noteId, _title.value, _blocks.value, _reminderAt.value, _repeatRule.value,
-                _labels.value, _pinned.value
-            )
-        } finally {
-            saving.set(false)
+    suspend fun save(): Long = withContext(NonCancellable) { saving.withLock {
+        check(_loaded.value) { "Note is still loading" }
+        check(!deleted) { "Note was deleted" }
+        if (!reminderDirty && currentId != null) {
+            repo.getById(currentId!!)?.let { latest ->
+                _reminderAt.value = latest.reminderAt
+                _repeatRule.value = latest.repeatRule
+            }
         }
-    }
+        val id = repo.saveNote(
+            currentId, _title.value, _blocks.value, _reminderAt.value, _repeatRule.value,
+            _labels.value, _pinned.value, preserveReminder = !reminderDirty
+        )
+        check(id > 0L) { "Note no longer exists" }
+        currentId = id
+        reminderDirty = false
+        id
+    } }
 }

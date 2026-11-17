@@ -70,7 +70,7 @@ class NotePackageTest {
         val att = mapOf("我的照片.png" to byteArrayOf(1, 2, 3))
 
         val data = read(writeSingleBytes(src, att)) as PackageData.Single
-        assertEquals(byteArrayOf(1, 2, 3).toList(), data.attachments["我的照片.png"]?.toList())
+        assertEquals(byteArrayOf(1, 2, 3).toList(), data.attachments["attachments/我的照片.png"]?.toList())
     }
 
     @Test
@@ -101,7 +101,7 @@ class NotePackageTest {
 
         assertEquals(3, data.notes.size)
         assertEquals(listOf("一", "二", "三"), data.notes.map { it.title })
-        assertTrue(data.attachments.containsKey("a.jpg"))
+        assertTrue(data.attachments.containsKey("attachments/a.jpg"))
     }
 
     @Test
@@ -115,8 +115,8 @@ class NotePackageTest {
     fun `空附件内容`() {
         val src = note(blocks = listOf(Block.Text("t"), Block.File("empty.bin")))
         val data = read(writeSingleBytes(src, mapOf("empty.bin" to ByteArray(0)))) as PackageData.Single
-        assertNotNull(data.attachments["empty.bin"])
-        assertEquals(0, data.attachments["empty.bin"]!!.size)
+        assertNotNull(data.attachments["attachments/empty.bin"])
+        assertEquals(0, data.attachments["attachments/empty.bin"]!!.size)
     }
 
     @Test
@@ -132,23 +132,25 @@ class NotePackageTest {
     @Test
     fun `拒绝含父目录段的附件条目`() {
         val src = note(blocks = listOf(Block.Text("t"), Block.File("../../evil.txt")))
-        // 故意用恶意名字写出，再读回 —— 必须被判为无效包
-        val data = read(writeSingleBytes(src, mapOf("../../evil.txt" to byteArrayOf(1))))
-        assertTrue("含 ../ 的条目必须被拒绝", data is PackageData.Invalid)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            writeSingleBytes(src, mapOf("../../evil.txt" to byteArrayOf(1)))
+        }
     }
 
     @Test
     fun `拒绝绝对路径条目`() {
         val src = note()
-        val data = read(writeSingleBytes(src, mapOf("/etc/passwd" to byteArrayOf(1))))
-        assertTrue(data is PackageData.Invalid)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            writeSingleBytes(src, mapOf("/etc/passwd" to byteArrayOf(1)))
+        }
     }
 
     @Test
     fun `拒绝含空段的条目`() {
         val src = note()
-        val data = read(writeSingleBytes(src, mapOf("a//b.txt" to byteArrayOf(1))))
-        assertTrue(data is PackageData.Invalid)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            writeSingleBytes(src, mapOf("a//b.txt" to byteArrayOf(1)))
+        }
     }
 
     // ── 安全：损坏与限额 ───────────────────────────────────────

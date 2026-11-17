@@ -41,6 +41,7 @@ fun TextBlockEditor(
      */
     readOnly: Boolean = false
 ) {
+    val currentIndex by rememberUpdatedState(blockIndex)
     val currentOnHtmlChange by rememberUpdatedState(onHtmlChange)
     val currentOnFocused by rememberUpdatedState(onFocused)
     val currentOnFocusConsumed by rememberUpdatedState(onFocusConsumed)
@@ -50,7 +51,7 @@ fun TextBlockEditor(
         factory = { ctx ->
             NoteEditText(ctx).apply {
                 setText(HtmlEx.fromHtml(initialHtml, darkMode))
-                lastEmittedMap[blockIndex] = initialHtml
+                lastEmittedMap[currentIndex] = initialHtml
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -65,8 +66,8 @@ fun TextBlockEditor(
                     override fun afterTextChanged(s: Editable?) {
                         if (s == null) return
                         val html = HtmlEx.toHtml(s)
-                        if (html != lastEmittedMap[blockIndex]) {
-                            lastEmittedMap[blockIndex] = html
+                        if (html != lastEmittedMap[currentIndex]) {
+                            lastEmittedMap[currentIndex] = html
                             currentOnHtmlChange(html)
                         }
                     }
@@ -79,8 +80,8 @@ fun TextBlockEditor(
             if (et.isEnabled == readOnly) et.isEnabled = !readOnly
             val d = et.resources.displayMetrics.density
             et.minimumHeight = if (minHeight.value > 0f) (minHeight.value * d).toInt() else 0
-            if (initialHtml != lastEmittedMap[blockIndex]) {
-                lastEmittedMap[blockIndex] = initialHtml
+            if (initialHtml != lastEmittedMap[currentIndex]) {
+                lastEmittedMap[currentIndex] = initialHtml
                 et.setText(HtmlEx.fromHtml(initialHtml, darkMode))
             }
             // 插入后把光标定位到该块（图片/录音后面的文字块）——只读时不抢焦点
